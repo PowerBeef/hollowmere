@@ -1,0 +1,7 @@
+# the asset build
+numpy
+Pillow
+# optional: preview_snd.py
+scipy
+# optional: re-rendering the Night Sister (game/content/sister/make.py)
+numba

@@ -1,0 +1,141 @@
+"""The Night Sister's animations as Poses: walk and chase cycles (phase 0..1,
+right heel strike at 0), standing idle, searching with the lantern held
+up, kneeling at prayer with the lantern on the floor, and the lunge."""
+import math
+import numpy as np
+from rig import Pose
+
+TAU = 2 * math.pi
+WALK_CYCLE = 1.125         # metres per walk cycle (two steps): 0.75 tiles
+CHASE_CYCLE = 1.5          # metres per chase cycle: 1 tile
+
+
+def smooth(t):
+    t = min(max(t, 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def foot_cycle(psi, cycle, duty, lift, width, pitch_strike, pitch_off):
+    """Ankle (x, y, lift) and foot pitch for leg phase psi (0 = heel strike),
+    the body still and the ground sliding back underneath."""
+    half = cycle * duty / 2
+    if psi < duty:
+        s = psi / duty
+        y = half - 2 * half * s
+        z = 0.0
+        pitch = pitch_strike * max(0.0, 1 - s * 5) - pitch_off * smooth((s - 0.6) / 0.4)
+        z += 0.05 * smooth((s - 0.7) / 0.3)              # heel rising
+    else:
+        s = (psi - duty) / (1 - duty)
+        y = -half + 2 * half * smooth(s)
+        z = lift * math.sin(math.pi * s) ** 0.8
+        pitch = -pitch_off * (1 - smooth(s * 1.4)) + pitch_strike * smooth((s - 0.6) / 0.4)
+    return (width, y, z), pitch
+
+
+def walk(phi, seed=7):
+    """Slow, deliberate, one foot placed nearly in front of the other; the
+    lantern swinging a little; the head hanging to one side."""
+    fr, pr = foot_cycle(phi % 1, WALK_CYCLE, 0.58, 0.07, 0.075, 12, 28)
+    fl, pl = foot_cycle((phi + 0.5) % 1, WALK_CYCLE, 0.58, 0.07, -0.075, 12, 28)
+    s1 = math.sin(TAU * phi)
+    c1 = math.cos(TAU * phi)
+    s2 = math.sin(2 * TAU * phi)
+    return Pose(
+        pelvis=(0.012 * s1, 0.0, None), dip=-0.012,
+        pelvis_yaw=5 * s1, pelvis_roll=-2.5 * s1,
+        lean=11 + 1.5 * s2, chest_yaw=-6 * s1, chest_roll=1.5 * s1,
+        head_roll=19 + 1.5 * s2, head_yaw=-2 * s1, head_pitch=-6 + 1.5 * math.cos(2 * TAU * phi),
+        foot_r=fr, foot_l=fl, foot_pitch_r=pr, foot_pitch_l=pl,
+        hand_r=(0.25 + 0.01 * s1, 0.20 + 0.03 * c1, 0.92 + 0.01 * s2),
+        lantern_swing=(8 * math.sin(2 * TAU * phi - 1.1), 3 * math.sin(TAU * phi - 0.7)),
+        hand_l=(-0.27, 0.03 + 0.11 * c1, 0.56 + 0.03 * abs(c1)),
+        curl_l=(25, 30, 35, 40, 20),
+        sway=(-0.02 * math.sin(TAU * phi - 0.6), -0.03),
+        fold=0.9 * s1, seed=seed, hair_swing=(0.0, -0.01),
+    )
+
+
+def chase(phi, seed=7):
+    """Lurching at you: long fast strides, bent forward, the head thrust out,
+    the free hand reaching, the lantern swinging wildly."""
+    fr, pr = foot_cycle(phi % 1, CHASE_CYCLE, 0.46, 0.17, 0.085, 10, 35)
+    fl, pl = foot_cycle((phi + 0.5) % 1, CHASE_CYCLE, 0.46, 0.17, -0.085, 10, 35)
+    s1 = math.sin(TAU * phi)
+    c1 = math.cos(TAU * phi)
+    s2 = math.sin(2 * TAU * phi)
+    c2 = math.cos(2 * TAU * phi)
+    return Pose(
+        pelvis=(0.02 * s1, 0.04, None), dip=-0.05 - 0.02 * c2,
+        pelvis_yaw=9 * s1, pelvis_roll=-4 * s1,
+        lean=26 + 3 * s2, chest_yaw=-10 * s1, chest_roll=3 * s1, chest_lean=10,
+        neck_lean=12, head_pitch=-22 + 3 * c2, head_roll=14 + 4 * s1, head_yaw=-4 * s1,
+        foot_r=fr, foot_l=fl, foot_pitch_r=pr, foot_pitch_l=pl,
+        hand_r=(0.27, 0.30 + 0.16 * -c1, 0.98 + 0.05 * s2), elbow_pole_r=(0.7, -0.5, 1.2),
+        lantern_swing=(-18 * math.sin(TAU * phi + 0.4), 9 * math.sin(2 * TAU * phi)),
+        hand_l=(-0.16, 0.55 + 0.12 * c1, 1.22 + 0.06 * s2), elbow_pole_l=(-0.45, 0.3, 0.4), hand_l_up=(0.0, 1.0, 0.25),
+        palm_l=(0.2, -0.3, -1.0), curl_l=(15, 12, 10, 12, 5), spread_l=26,
+        jaw=0.25 + 0.1 * s2,
+        sway=(-0.04 * math.sin(TAU * phi - 0.6), -0.09), hem=0.29,
+        fold=1.4 * s1, seed=seed, hair_swing=(0.0, -0.04),
+    )
+
+
+def idle(seed=7):
+    return Pose(
+        pelvis=(0.0, 0.0, None), dip=-0.01,
+        lean=12, head_roll=26, head_pitch=-4, head_yaw=4,
+        foot_r=(0.085, 0.03, 0.0), foot_l=(-0.085, -0.03, 0.0), foot_pitch_r=0, foot_pitch_l=0,
+        hand_r=(0.25, 0.19, 0.91), lantern_swing=(1.0, 0.0),
+        hand_l=(-0.26, 0.06, 0.52), curl_l=(12, 18, 24, 30, 10), spread_l=22,
+        seed=seed,
+    )
+
+
+def search(seed=7):
+    """Holding the lantern up beside her face to see by it."""
+    return Pose(
+        pelvis=(0.0, 0.0, None), dip=-0.01,
+        lean=4, chest_lean=2, neck_lean=14, head_roll=8, head_pitch=4, head_yaw=18, chest_yaw=8,
+        foot_r=(0.09, 0.05, 0.0), foot_l=(-0.09, -0.04, 0.0),
+        hand_r=(0.24, 0.30, 1.72), elbow_pole_r=(0.9, -0.2, 1.2), hand_r_up=(0.0, 0.4, 1.0),
+        palm_r=(-1.0, 0.0, 0.0), curl_r=(80, 85, 90, 90, 50),
+        lantern_swing=(-6.0, 4.0),
+        hand_l=(-0.25, 0.08, 0.55), curl_l=(20, 28, 34, 40, 14), spread_l=14,
+        seed=seed,
+    )
+
+
+def kneel(seed=7):
+    """At prayer on the chapel step: sitting back on her heels, head bowed,
+    hands together under her chin, the lantern on the floor at her right."""
+    return Pose(
+        pelvis=(0.0, -0.06, 0.55),
+        lean=14, chest_lean=8, neck_lean=26, head_pitch=-26, head_roll=8,
+        legs_r=((0.10, 0.30, 0.07), (0.10, -0.17, 0.05), (0.10, -0.33, 0.03)),
+        legs_l=((-0.10, 0.30, 0.07), (-0.10, -0.17, 0.05), (-0.10, -0.33, 0.03)),
+        hand_r=(0.03, 0.26, 1.00), elbow_pole_r=(0.6, 0.0, 0.6), hand_r_up=(0.0, 0.3, 1.0), palm_r=(-1, 0, 0),
+        hand_l=(-0.03, 0.26, 1.00), elbow_pole_l=(-0.6, 0.0, 0.6), hand_l_up=(0.0, 0.3, 1.0), palm_l=(1, 0, 0),
+        curl_r=(30, 30, 30, 30, 20), curl_l=(30, 30, 30, 30, 20), spread_l=0, spread_r=0,
+        lantern='floor', lantern_pos=(0.36, 0.22, 0.0),
+        hem=0.02, r1=0.34, apron=0.20,
+        seed=seed,
+    )
+
+
+def attack(k, seed=7):
+    """The lunge, seen from 0.75 tiles: rearing (0), reaching (1), on you (2)."""
+    t = (0.0, 0.5, 1.0)[k]
+    return Pose(
+        pelvis=(0.0, 0.05 + 0.10 * t, None), dip=-0.04 - 0.10 * t,
+        foot_r=(0.12, 0.10 + 0.10 * t, 0.0), foot_l=(-0.12, -0.18, 0.0),
+        lean=22 + 18 * t, chest_lean=6 + 8 * t, neck_lean=6, head_pitch=-(22 + 18 * t + 6 + 8 * t + 6) + 18 - 4 * t,
+        head_roll=10 - 8 * t, head_yaw=0,
+        hand_r=(0.32, 0.30 + 0.20 * t, 1.45 + 0.02 * t), elbow_pole_r=(0.9, -0.2, 1.0),
+        hand_r_up=(0.0, 0.2, 1.0), palm_r=(-1.0, 0.2, 0.0), curl_r=(85, 90, 90, 90, 50),
+        lantern_swing=(-10 - 10 * t, 6),
+        hand_l=(-0.24 + 0.04 * t, 0.42 + 0.28 * t, 1.50 - 0.04 * t), elbow_pole_l=(-0.9, 0.0, 1.0),
+        hand_l_up=(0.0, 1.0, 0.3), palm_l=(0.0, -0.4, -1.0), curl_l=(18, 12, 10, 14, 4), spread_l=30,
+        jaw=0.35 + 0.65 * t,
+        sway=(0.0, -0.05), seed=seed, eye=0.0,
+    )
