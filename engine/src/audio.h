@@ -32,7 +32,9 @@ typedef struct {
     s32 x, y;       // 16.16 world position
     s16 fadeL, fadeR; // target volumes for smoothing
     s16 fadeRate;   // 0 = none; else per-frame volume decrement (fade out)
+    u8  music;      // a note of the sequencer (they share a polyphony cap)
 } Voice;
+_Static_assert(sizeof(Voice) == 48, "Voice layout: update game/tests/regress/test_audio.py");
 
 extern Voice g_voices[NUM_VOICES];
 extern u8 g_masterVol;      // 0..64 global master (fades)

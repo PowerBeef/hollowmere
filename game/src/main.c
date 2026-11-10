@@ -320,11 +320,12 @@ int main(void) {
     splash();
     while (1) {
         int choice = ui_title();
-        if (choice == TITLE_CONTINUE && save_read(&g_checkpoint)) {
+        int saved = choice == TITLE_CONTINUE ? save_read(&g_checkpoint) : SAVE_NONE;
+        if (saved != SAVE_NONE) {
             g_state = g_checkpoint;
-            g_hasCheckpoint = 1;
             ui_chapter(STR_CHAPTER_0 + g_state.level, STR_CHNUM_0 + g_state.level);
-            game_restore_checkpoint();
+            if (saved == SAVE_OK) { g_hasCheckpoint = 1; game_restore_checkpoint(); }
+            else { g_hasCheckpoint = 0; game_load_level(g_state.level, 0); }      // a version 1.0 save: its chapter from the start
         } else {
             game_new();
             ui_intro();

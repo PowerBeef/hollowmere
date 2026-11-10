@@ -46,7 +46,9 @@ extern s32 g_sx[MAXV], g_sy[MAXV], g_sw[MAXV];
 #define s_sw g_sw
 
 static u8  s_faceOrder[MAXF];
-static s16 s_faceKey[MAXF];        // summed vertex depths, 1/256 tile
+extern s16 g_faceKey[MAXF];        // summed vertex depths, 1/256 tile (in spare VRAM: see gba.ld)
+#define s_faceKey g_faceKey
+_Static_assert(MAXF <= 64, "g_faceKey in gba.ld holds 64 keys");
 
 typedef struct { s32 x, y, w, u, v; } PV;     // projected vertex: column, row, 1/z, texels (or texels/z)
 typedef struct { s32 f, r, z, u, v; } CV;     // camera space clip vertex

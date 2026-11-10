@@ -37,7 +37,7 @@ def main():
         ('sweep', [py, f"{T}/sweep.py", f"{out}/sweep"] + (['--every', '12'] if quick else [])),
         ('fps', [py, f"{T}/fps.py", f"{out}/fps"]),
         ('stack', [py, f"{T}/stackcheck.py", f"{out}/stack"]),
-        ('saves', [py, f"{T}/savecheck.py", f"{out}/saves"]),
+        ('saves', [py, f"{G}/savecheck.py", f"{out}/saves"]),
     ]
     failed = []
     for name, cmd in steps:

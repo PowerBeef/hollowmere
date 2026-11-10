@@ -55,13 +55,17 @@ def hole_check(name, image=None):
     return flood(247) + ["run 24", "snap"] + flood(225) + ["run 24", f"cmp {name}" + (f" {image}" if image else "")]
 
 
-def standable(level):
-    """A function (x, y) -> can the player stand there, for a level index."""
+def parsed(level):
+    """(the compiled layout of a level index: cells, collision boxes; the room letters that are only a drop)"""
     mod = importlib.import_module(LEVELS[level])
     models = {n: fn() for n, fn in furniture.MODELS.items()}
     ids = dict(wall=audit.Any(), flat=audit.Any(), ptex=audit.Any(), model={k: 0 for k in models}, thing=audit.Any())
-    L = levelc.parse(mod, ids, models)
-    void = {r for r, d in mod.ROOMS.items() if d.get('map') == 'void'}
+    return levelc.parse(mod, ids, models), {r for r, d in mod.ROOMS.items() if d.get('map') == 'void'}
+
+
+def standable(level):
+    """A function (x, y) -> can the player stand there, for a level index."""
+    L, void = parsed(level)
 
     def free(x, y):
         cx, cy = int(x), int(y)

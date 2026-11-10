@@ -267,6 +267,7 @@ static void interact(void) {
             if (d->lock && !(ds & DS_UNLOCKED)) {
                 if (g_state.keys & (1 << d->lock)) {
                     g_state.doorState[idx] |= DS_UNLOCKED;
+                    g_doorEpoch++;
                     static char buf[56];
                     const char *a = game_str(STR_M_UNLOCKED), *b = key_name(d->lock);
                     int n = 0;

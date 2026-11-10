@@ -25,7 +25,8 @@ typedef struct {
     u16 keys;            // bitmask of keys held
     u8  fuses, fusesPlaced;
     u32 battery;         // 0..1000000
-    u8  flashOn, pad0;
+    u8  flashOn;
+    u8  seq;             // which of the two save slots is the newer (save.c)
     u16 deaths;
     u32 playFrames;
     u8  thingTaken[MAX_THINGS / 8];
@@ -46,7 +47,8 @@ typedef struct {
 #define DS_UNLOCKED 2
 #define DS_LOCKED   4    // locked by script
 
-#define SAVE_MAGIC 0x484C5732u   // "HLW2"
+#define SAVE_MAGIC   0x484C5733u   // "HLW3"
+#define SAVE_VERSION 3             // of this layout; any other is not loaded
 
 extern SaveState g_state;
 extern SaveState g_checkpoint;
@@ -183,9 +185,11 @@ int  thing_take(int idx);
 
 // save
 int  save_write(const SaveState *s);
-int  save_read(SaveState *s);
+int  save_read(SaveState *s);        // SAVE_NONE, SAVE_OK, or SAVE_CHAPTER: only the chapter to start (a version 1.0 save)
 int  save_exists(void);
 void save_erase(void);
+enum { SAVE_NONE = 0, SAVE_OK, SAVE_CHAPTER };
+int  game_state_valid(const SaveState *s);   // every index and range of a state read from the cartridge
 
 // settings stored alongside the save
 typedef struct { u8 brightness, volume, controls, seenIntro; } Settings;

@@ -2,6 +2,7 @@
 // The Night Sister: perception, pathfinding and behaviour
 #include "game.h"
 #include "world.h"
+#include "flow.h"
 #include "audio.h"
 #include "assets.h"
 #include "hud.h"
@@ -17,9 +18,11 @@ s16 g_fear;
 #define SPD_SCRIPT  1000
 #define CATCH_DIST  0xA000     // 0.625 tiles
 
-EWRAM_BSS static u8 s_field[MAP_W * MAP_H];
-EWRAM_BSS static u8 s_queue[MAP_W * MAP_H];
+EWRAM_BSS static u8  s_field[FLOW_CELLS];
+EWRAM_BSS static u16 s_queue[FLOW_CELLS];
+static Flow s_flow;
 static int s_fieldTarget = -1;
+static u8  s_fieldDoors;         // g_doorEpoch when the field was built
 static u8 s_vis[9][9];
 static int s_visTile = -1;
 static u32 s_rngState = 99;
@@ -54,28 +57,18 @@ static int step_ok(int c, int dir) {
     return edge_ok(world_edge_dir(x, y, dir));
 }
 
+// one step of the flow field (engine/src/flow.h): through an edge she can
+// pass, into a cell she can stand in
+static int field_step(int c, int dir) {
+    static const s8 to[4] = { -MAP_W, 1, MAP_W, -1 };
+    return step_ok(c, dir) && cell_free(c + to[dir]);
+}
+
 static void build_field(int target) {
-    memset(s_field, 255, sizeof s_field);
-    if (!world_inside(target & 31, target >> 5)) { s_fieldTarget = target; return; }
-    int head = 0, tail = 0;
-    s_field[target] = 0;
-    u16 *q = (u16 *)s_queue;
-    q[tail++] = target;
-    while (head < tail && tail < 512) {
-        int c = q[head++];
-        int d = s_field[c] + 1;
-        if (d > 250) continue;
-        int x = c & 31, y = c >> 5;
-        int nb[4] = { y > 0 ? c - 32 : -1, x < 31 ? c + 1 : -1, y < 31 ? c + 32 : -1, x > 0 ? c - 1 : -1 };
-        for (int k = 0; k < 4; k++) {
-            int n = nb[k];
-            if (n < 0 || s_field[n] != 255) continue;
-            if (!cell_free(n) || !step_ok(c, k)) continue;
-            s_field[n] = d;
-            q[tail++] = n;
-        }
-    }
+    flow_begin(&s_flow, s_field, s_queue, world_inside(target & 31, target >> 5) ? target : -1);
+    while (!flow_run(&s_flow, FLOW_CELLS, field_step)) { }
     s_fieldTarget = target;
+    s_fieldDoors = g_doorEpoch;
 }
 
 static int cell_of(s32 x, s32 y) { return ((y >> 16) << 5) | (x >> 16); }
@@ -109,7 +102,8 @@ static int next_cell(int c) {
 static void set_goal(s32 x, s32 y) {
     g_cr.goalX = x; g_cr.goalY = y;
     int t = cell_of(x, y);
-    if (t != s_fieldTarget) { build_field(t); g_cr.pathAge = 0; }
+    // (a door locked, unlocked or shut since the field was built changes the ways through)
+    if (t != s_fieldTarget || s_fieldDoors != g_doorEpoch) { build_field(t); g_cr.pathAge = 0; }
 }
 
 static int pick_patrol_node(int far) {
@@ -303,6 +297,7 @@ void creature_light(void) {
     }
     int flick = 200 + (rng_next() & 55);
     if (g_cr.state == CR_KILL) flick = 256;
+    world_light_guest(cx - 7, cy - 7, 15, 15);      // (the grid gets these cells back when she has moved on)
     u8 *grid = g_lightgrid;
     for (int k = 0; k < s_litN; k++) {
         u32 v = (s_litFall[k] * flick) >> 8;
@@ -329,6 +324,8 @@ static int move_toward_goal(s32 speed) {
             u8 e = world_edge_dir(c & 31, c >> 5, dir);
             Door *d = world_door_on(e);
             if (d && d->open < 0xC000) {
+                // locked since she chose this way: not hers to open; she looks for another
+                if (!edge_ok(e)) { build_field(goalCell); g_cr.moving = 0; return 0; }
                 if (!d->moving) {
                     d->moving = 1;
                     g_state.doorState[d - g_doors] |= DS_OPEN;

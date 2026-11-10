@@ -103,6 +103,7 @@ static void door_op(int idx, int op) {
     case 3: g_state.doorState[idx] &= ~DS_LOCKED; g_state.doorState[idx] |= DS_UNLOCKED; break;
     case 4: d->open = 0; d->moving = 0; g_state.doorState[idx] &= ~DS_OPEN; break;
     }
+    g_doorEpoch++;
 }
 
 static int run_one(Thread *t) {

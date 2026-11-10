@@ -8,8 +8,20 @@ u8 g_masterVol = 64;
 static u32 s_acc[MIX_LEN];
 extern s8 g_mixL[MIX_LEN * 2], g_mixR[MIX_LEN * 2];
 extern u8 g_mixHalf;      // half to mix into
-static u32 s_vp[NUM_VOICES];
+extern u32 g_voiceVol[NUM_VOICES];     // packed volumes of the frame being mixed (in spare VRAM: see gba.ld)
+#define s_vp g_voiceVol
+_Static_assert(NUM_VOICES <= 16, "g_voiceVol in gba.ld holds 16 voices");
 extern u32 mix_packed(u32 *acc, const s8 *data, u32 pos, u32 inc, int m, u32 vp);
+
+// a voice that is not heard this frame still runs on (and ends)
+static inline void voice_skip(Voice *vo) {
+    u32 pos = vo->pos + vo->inc * MIX_LEN;
+    if (pos >= vo->end) {
+        if (!vo->loopLen) { vo->active = 0; return; }
+        while (pos >= vo->end) pos -= vo->loopLen;
+    }
+    vo->pos = pos;
+}
 
 IWRAM_CODE void audio_mix(void) {
     u32 *acc = s_acc;
@@ -38,16 +50,7 @@ IWRAM_CODE void audio_mix(void) {
         vo->volL = vl; vo->volR = vr;
         // packed units are half volume (0..128)
         vl >>= 1; vr >>= 1;
-        if (vl <= 0 && vr <= 0) {
-            // inaudible: just advance
-            u32 pos = vo->pos + vo->inc * MIX_LEN;
-            if (pos >= vo->end) {
-                if (!vo->loopLen) { vo->active = 0; continue; }
-                while (pos >= vo->end) pos -= vo->loopLen;
-            }
-            vo->pos = pos;
-            continue;
-        }
+        if (vl <= 0 && vr <= 0) { voice_skip(vo); continue; }
         if (vl > 128) vl = 128;
         if (vr > 128) vr = 128;
         total += vl > vr ? vl : vr;
@@ -62,6 +65,7 @@ IWRAM_CODE void audio_mix(void) {
             if (!p) continue;
             u32 l = ((p & 0xFFFF) * k) >> 8, r = ((p >> 16) * k) >> 8;
             s_vp[v] = l | (r << 16);
+            if (!(l | r)) voice_skip(&g_voices[v]);       // scaled away: it still runs on
         }
     }
     // pass 2: mix

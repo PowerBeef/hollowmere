@@ -23,6 +23,11 @@ _Static_assert(offsetof(SaveState, level) == 4 && offsetof(SaveState, objective)
                offsetof(SaveState, fuses) == 14 && offsetof(SaveState, fusesPlaced) == 15 && offsetof(SaveState, flashOn) == 20 &&
                offsetof(SaveState, deaths) == 22 && offsetof(SaveState, trigFired) == 56 && offsetof(SaveState, flags) == 144 &&
                offsetof(SaveState, lightLevel) == 152, "SaveState layout: update game/tests/hm.py");
+_Static_assert(offsetof(SaveState, version) == 5 && offsetof(SaveState, creatureMode) == 7 && offsetof(SaveState, notesFound) == 8 &&
+               offsetof(SaveState, battery) == 16 && offsetof(SaveState, seq) == 21 && offsetof(SaveState, thingTaken) == 28 &&
+               offsetof(SaveState, doorState) == 64 && offsetof(SaveState, propHidden) == 104 && offsetof(SaveState, script) == 168 &&
+               offsetof(SaveState, px) == 208 && offsetof(SaveState, checksum) == 218 && sizeof(SaveState) == 220,
+               "SaveState layout: update game/tests/savecheck.py (and bump SAVE_VERSION)");
 _Static_assert(offsetof(Creature, x) == 4 && offsetof(Creature, y) == 8 && offsetof(Creature, timer) == 34, "Creature layout: update game/tests/hm.py");
 _Static_assert(offsetof(Player, hiding) == 16 && offsetof(Player, frozen) == 37, "Player layout: update game/tests/hm.py");
 _Static_assert(offsetof(FxState, slits) == 22, "FxState layout: update game/tests/hm.py");
@@ -189,6 +194,36 @@ int thing_take(int idx) {
 }
 
 // ------------------------------------------------------------- level
+// A state read from the cartridge is used only if nothing in it can lead the
+// game astray: every index within its table, every amount within its range,
+// the script threads inside their events, the player on a cell he can stand
+// on. (Its checksum was right, so this is about saves from another build or
+// edited ones, not about noise.)
+int game_state_valid(const SaveState *s) {
+    if (s->level >= NUM_LEVELS || s->objective >= NUM_STRINGS || s->creatureMode > 2) return 0;
+    if (s->fuses > 3 || s->fusesPlaced > 3 || s->battery > 1000000) return 0;
+    const LevelDef *L = level_table[s->level];
+    for (int i = 0; i < 16; i++) if (s->lightLevel[i] > 16) return 0;
+    for (int i = 0; i < MAX_THREADS; i++) {
+        int ev = s->script.ev[i];
+        if (ev && (ev >= L->numEvents || s->script.pc[i] >= L->eventLen[ev])) return 0;
+    }
+    u32 cx = (u32)s->px >> 16, cy = (u32)s->py >> 16;
+    if (cx >= MAP_W || cy >= MAP_H || (L->cells[cy * MAP_W + cx] & 3) != 1) return 0;
+    // not inside a piece of furniture, nor in a room that is only a drop
+    for (const u8 *b = L->boxList + L->cellBox[cy * MAP_W + cx]; *b != 255; b++) {
+        const CollBox *c = &L->boxes[*b];
+        if (s->px > (c->x0 << 8) && s->px < (c->x1 << 8) && s->py > (c->y0 << 8) && s->py < (c->y1 << 8)) return 0;
+    }
+    const MapDef *M = L->map;
+    u32 mx = cx - M->x0, my = cy - M->y0;
+    if (mx < M->w && my < M->h) {
+        u8 room = M->room[my * M->w + mx];
+        if (room != 0xFF && (M->roomFlags[room] & MAPR_VOID)) return 0;
+    }
+    return 1;
+}
+
 void game_new(void) {
     memset(&g_state, 0, sizeof g_state);
     g_state.magic = SAVE_MAGIC;

@@ -93,11 +93,31 @@ extern void light_patch(u8 *dst, const u8 *src, int w, int h, int lvl);
 // copied to the grid and only the flickering/buzzing/candle lights are added.
 EWRAM_BSS static u8 s_lightBase[GRID_W * GRID_W] ALIGN4;
 u8 g_lightsDirty = 1;
+u8 g_doorEpoch;
 // Lights further than this (half tiles) from the camera stop flickering and
 // are baked into the base layer at their average brightness.
 #define LIGHT_NEAR 14
 static const u16 s_avgLevel[5] = { 256, 236, 228, 150, 228 };   // by LIGHT_* mode
 static u32 s_nearMask;
+static u32 s_lightTick;         // the logic tick of the last flicker step
+// A rectangle of the grid that someone else has lit on top of this module's
+// lights (the enemy's lantern): put back to the base the next time the
+// lights are refreshed, so nothing of it stays behind when it moves or goes.
+static u8 s_guest[4];           // x0, y0, w, h in light cells; w = 0: none
+void world_light_guest(int x0, int y0, int w, int h) {
+    if (x0 < 0) { w += x0; x0 = 0; }
+    if (y0 < 0) { h += y0; y0 = 0; }
+    if (x0 + w > GRID_W) w = GRID_W - x0;
+    if (y0 + h > GRID_W) h = GRID_W - y0;
+    if (w <= 0 || h <= 0) return;
+    if (s_guest[2]) {           // one not yet put back: cover both
+        int x1 = x0 + w, y1 = y0 + h, gx1 = s_guest[0] + s_guest[2], gy1 = s_guest[1] + s_guest[3];
+        if (s_guest[0] < x0) x0 = s_guest[0];
+        if (s_guest[1] < y0) y0 = s_guest[1];
+        w = (x1 > gx1 ? x1 : gx1) - x0; h = (y1 > gy1 ? y1 : gy1) - y0;
+    }
+    s_guest[0] = x0; s_guest[1] = y0; s_guest[2] = w; s_guest[3] = h;
+}
 
 static u8 s_fullCopy = 1;
 void world_update_lights(int frame) {
@@ -113,8 +133,12 @@ void world_update_lights(int frame) {
         if (dx <= LIGHT_NEAR && dy <= LIGHT_NEAR) nearMask |= 1u << i;
     }
     if (nearMask != s_nearMask) { s_nearMask = nearMask; g_lightsDirty = 1; }
-    // flicker at 15 Hz: skip every other render unless something changed
-    if (!g_lightsDirty && (frame & 1)) return;
+    // The lights flicker ten times a second whatever the frame rate: a step
+    // every six logic ticks (frame counts those, 60 a second). Between
+    // steps nothing is touched unless something changed.
+    u32 since = (u32)frame - s_lightTick;
+    if (!g_lightsDirty && since < 6) return;
+    s_lightTick = since < 24 ? s_lightTick + 6 : (u32)frame;
     if (g_lightsDirty == 2) { g_lightsDirty = 1; }
     if (g_lightsDirty) {
         g_lightsDirty = 0;
@@ -135,6 +159,10 @@ void world_update_lights(int frame) {
         s_fullCopy = 0;
         bios_cpufastset(s_lightBase, g_lightgrid, (GRID_W * GRID_W) / 4);
     } else {
+        for (int y = 0; y < s_guest[3]; y++) {
+            int o = ((s_guest[1] + y) << 6) + s_guest[0];
+            memcpy(&g_lightgrid[o], &s_lightBase[o], s_guest[2]);
+        }
         for (int i = 0; i < g_numDLights; i++) {
             DynLight *dl = &g_dlights[i];
             if (!(nearMask & (1u << i)) || !dl->w || !dl->h) continue;
@@ -144,6 +172,7 @@ void world_update_lights(int frame) {
             }
         }
     }
+    s_guest[2] = 0;
     for (int i = 0; i < g_numDLights; i++) {
         DynLight *dl = &g_dlights[i];
         if (!dl->on || !(nearMask & (1u << i))) continue;

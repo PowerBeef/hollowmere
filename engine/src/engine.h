@@ -117,6 +117,7 @@ extern u8  g_edges[MAP_W * MAP_H * 2];
 extern const EdgeType *g_edgeTypes;
 extern const u8 *const walltex[];           // 64x128 column-major wall textures (ROM)
 extern Door g_doors[MAX_DOORS];
+extern u8 g_doorEpoch;          // counts the changes to which doors can be passed (locks, scripted doors): path fields built before are stale
 extern int g_numDoors;
 extern u8  g_colormap[8192];                // 32 light levels x 256 colours (VRAM, 3D view)
 extern u8  g_colormapSrc[8192];             // its master copy (EWRAM)

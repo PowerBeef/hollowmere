@@ -47,6 +47,11 @@ void audio_vblank(void) {
     }
 }
 
+// The mixer and the sequencer run in the VBlank interrupt and use the voice
+// table too: everything that claims or sets up a voice from the main program
+// does it with interrupts off, and puts the interrupt flag back as it was.
+static inline u16 irq_off(void) { u16 ime = REG_IME; REG_IME = 0; return ime; }
+
 static int alloc_voice(u8 prio) {
     int best = -1, bestPrio = 256;
     for (int i = 0; i < NUM_VOICES; i++) {
@@ -57,13 +62,13 @@ static int alloc_voice(u8 prio) {
     return -1;
 }
 
+// (interrupts are off: the caller finishes the voice and turns them back on)
 static int start_voice(u16 id, u16 pitch, u8 prio) {
     if (id >= NUM_SND) return -1;
     const SoundDef *sd = &snd_defs[id];
     int v = alloc_voice(prio);
     if (v < 0) return -1;
     Voice *vo = &g_voices[v];
-    REG_IME = 0;
     vo->active = 0;
     vo->data = sd->data;
     vo->pos = 0;
@@ -75,6 +80,7 @@ static int start_voice(u16 id, u16 pitch, u8 prio) {
     vo->serial = s_serial++;
     vo->is3d = 0;
     vo->fadeRate = 0;
+    vo->music = 0;
     return v;
 }
 
@@ -97,14 +103,16 @@ static void pan_vol(Voice *vo, int vol, int pan) {
 }
 
 int snd_play(u16 id, u8 vol, s8 pan, u16 pitch, u8 prio) {
+    u16 ime = irq_off();
     int v = start_voice(id, pitch, prio);
-    if (v < 0) { REG_IME = 1; return -1; }
+    if (v < 0) { REG_IME = ime; return -1; }
     Voice *vo = &g_voices[v];
     pan_vol(vo, vol, pan);
     vo->volL = vo->fadeL; vo->volR = vo->fadeR;
     vo->active = 1;
-    REG_IME = 1;
-    return handle_of(v);
+    int h = handle_of(v);
+    REG_IME = ime;
+    return h;
 }
 
 static s32 s_lx, s_ly; static u16 s_la;
@@ -135,15 +143,17 @@ static void update3d(Voice *vo) {
 }
 
 int snd_play3d(u16 id, s32 x, s32 y, u8 vol, u16 pitch, u8 prio) {
+    u16 ime = irq_off();
     int v = start_voice(id, pitch, prio);
-    if (v < 0) { REG_IME = 1; return -1; }
+    if (v < 0) { REG_IME = ime; return -1; }
     Voice *vo = &g_voices[v];
     vo->is3d = 1; vo->baseVol = vol; vo->x = x; vo->y = y;
     update3d(vo);
     vo->volL = vo->fadeL; vo->volR = vo->fadeR;
     vo->active = 1;
-    REG_IME = 1;
-    return handle_of(v);
+    int h = handle_of(v);
+    REG_IME = ime;
+    return h;
 }
 
 void snd_update_3d(s32 lx, s32 ly, u16 angle) {
@@ -181,8 +191,10 @@ u16 note_pitch(int note) {
 }
 
 void music_play(const NoteEv *seq, int count, u16 instrument, u16 loopFrames, u8 vol) {
+    u16 ime = irq_off();        // (music_tick must not see half of the new tune)
     s_seq = seq; s_seqLen = count; s_seqIdx = 0; s_seqT = 0;
     s_seqLoop = loopFrames; s_seqInst = instrument; s_seqVol = vol;
+    REG_IME = ime;
 }
 
 void music_stop(void) { s_seq = 0; }
@@ -199,7 +211,7 @@ void music_tick(void) {
             int cnt = 0, oldest = -1, oldAge = -1;
             for (int i = 0; i < NUM_VOICES; i++) {
                 Voice *q = &g_voices[i];
-                if (!q->active || q->prio != 40 || q->fadeRate) continue;
+                if (!q->active || !q->music || q->fadeRate) continue;
                 cnt++;
                 int age = (u16)(s_serial - q->serial);
                 if (age > oldAge) { oldAge = age; oldest = i; }
@@ -213,7 +225,7 @@ void music_tick(void) {
         Voice *vo = &g_voices[v];
         vo->data = sd->data; vo->pos = 0; vo->inc = note_pitch(e->note);
         vo->end = sd->len << 12; vo->loopLen = 0; vo->id = s_seqInst;
-        vo->prio = 40; vo->serial = s_serial++; vo->is3d = 0; vo->fadeRate = 0;
+        vo->prio = 40; vo->serial = s_serial++; vo->is3d = 0; vo->fadeRate = 0; vo->music = 1;
         pan_vol(vo, vol, pan);
         vo->volL = vo->fadeL; vo->volR = vo->fadeR;
         vo->active = 1;

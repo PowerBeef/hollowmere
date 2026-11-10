@@ -23,7 +23,8 @@ extern const u8 *g_cellFlags;      // per cell: 1 inside, 2 blocked by furniture
 #define CELLF_BLOCKED 2
 
 void world_load_level(const LevelDef *L);
-void world_update_lights(int frame);
+void world_update_lights(int frame);            // frame: the logic tick (60 a second)
+void world_light_guest(int x0, int y0, int w, int h);  // light cells lit by someone else: restored at the next refresh
 void world_update_doors(void);
 void world_door_props(void);
 u8   world_edge(int x, int y, int north);          // west (0) / north (1) edge of a cell
