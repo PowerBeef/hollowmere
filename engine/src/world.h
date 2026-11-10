@@ -4,7 +4,6 @@
 #include "engine.h"
 #include "leveldef.h"
 
-#define MAX_DLIGHTS 20
 typedef struct {
     const LightDef *def;
     const u8 *patch;

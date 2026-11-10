@@ -3,8 +3,8 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 #include "gba.h"
+#include "limits.h"         // VIEW_W, MAP_W, MAX_DOORS... (shared with the tools and the linker script)
 
-#define VIEW_W   240          // columns (full horizontal resolution)
 #define VIEW_CX  120          // screen centre column
 // The 3D view is letterboxed: rows VIS0..VIS1-1 are shown, ROW0..ROW1-1 are
 // rendered (a margin for head bob and shake). The eye line sits a little
@@ -22,17 +22,13 @@
 #define EYE_256   256         // eye height in 1/256 tile
 #define NPAIR_C   29          // ceiling row pairs  (rows HORIZON-1 .. ROW0)
 #define NPAIR_F   35          // floor row pairs    (rows HORIZON .. ROW1-1)
-#define MAP_W    32
-#define MAP_H    32
 #define MAP_SHIFT 5
+_Static_assert(MAP_W == 1 << MAP_SHIFT && MAP_H == MAP_W && MAP_W * MAP_H <= 1024, "the cell grid is 32 by 32 throughout (cell = y << 5 | x)");
 #define FIX      16
 #define ONE      (1 << FIX)
-#define NUM_LIGHT 32
 #define NCONE    16
 #define GRID_W   64            // light grid: 2 subcells per tile
-#define MAX_DOORS 40
-#define MAX_SPRITES 64
-#define WTEX_H   128           // wall textures: 64 wide x 128 tall, column-major, in ROM
+#define WTEX_H   WALL_TEX_H           // wall textures: 64 wide x 128 tall, column-major, in ROM
 
 // Fixed EWRAM areas (kept out of the linker's way, see gba.ld):
 // light grid at the start of EWRAM (bits 0-4 light, bits 5-6 floor material)
@@ -140,6 +136,7 @@ IWRAM_CODE void render_view(u8 *fb);
 void render_enter_3d(void);
 void render_init(void);
 void render_build_flash_tables(void);
+void render_flash_warm(int power);      // have the light tables for this flashlight power ready (see lighting.c)
 
 // math
 extern const s16 sin_lut[1024];

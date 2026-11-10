@@ -38,8 +38,9 @@ void script_reset(void) {
     g_chapterRequest = -1;
 }
 
-int script_flag(int f) { return (g_state.flags[f >> 3] >> (f & 7)) & 1; }
+int script_flag(int f) { return (unsigned)f < NUM_FLAGS && ((g_state.flags[f >> 3] >> (f & 7)) & 1); }
 void script_set_flag(int f, int v) {
+    if ((unsigned)f >= NUM_FLAGS) return;
     if (v) g_state.flags[f >> 3] |= 1 << (f & 7);
     else g_state.flags[f >> 3] &= ~(1 << (f & 7));
 }
@@ -124,7 +125,7 @@ static int run_one(Thread *t) {
         for (int i = 0; i < g_numDLights; i++)
             if (g_dlights[i].def->group == p[0]) g_dlights[i].level = p[1] + (p[1] >> 7);
         g_lightsDirty = 1;
-        if (p[0] < 16) g_state.lightLevel[p[0]] = p[1] >> 4;
+        if (p[0] < MAX_LIGHT_GROUPS) g_state.lightLevel[p[0]] = p[1] >> 4;
         p += 2; break;
     case OP_CREATURE:
         switch (p[0]) {

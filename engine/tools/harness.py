@@ -29,6 +29,14 @@ class HarnessError(Exception):
 _syms = {}
 
 
+def emulator():
+    """The emulator the harness is built on, e.g. 'mGBA 0.10.2' (every timing the tools report is its model of the hardware)."""
+    try:
+        return subprocess.check_output([paths.HARNESS, '--version'], stderr=subprocess.DEVNULL).decode().strip() or 'mGBA'
+    except (OSError, subprocess.CalledProcessError):
+        return 'mGBA'
+
+
 def symbols(elf=None):
     elf = elf or paths.ELF
     if elf not in _syms:

@@ -148,12 +148,13 @@ u16 angle_to(s32 dx, s32 dy) {
     // octant-based atan2 approximation, 0..65535
     if (dx == 0 && dy == 0) return 0;
     s32 ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+    while ((ax | ay) >= 0x10000) { ax >>= 1; ay >>= 1; }     // (the quotient in 32 bits; 15 good bits left)
     s32 a;
     if (ax >= ay) {
-        s32 t = (s32)(((s64)ay << 15) / ax);          // tan in Q15 (0..1)
+        s32 t = (ay << 15) / ax;                      // tan in Q15 (0..1)
         a = (t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15);   // atan(t)/(2pi)*65536
     } else {
-        s32 t = (s32)(((s64)ax << 15) / ay);
+        s32 t = (ax << 15) / ay;
         a = 16384 - ((t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15));
     }
     if (dx < 0) a = 32768 - a;
@@ -465,7 +466,7 @@ void game_update(void) {
     update_fx();
     hud_update();
     DEV_ONLY(u32 q4 = PNOW();)
-    snd_update_3d(g_player.x, g_player.y, g_player.angle);
+    if (g_frame & 1) snd_update_3d(g_player.x, g_player.y, g_player.angle);    // (30 times a second will do)
     DEV_ONLY(u32 q5 = PNOW(); g_profUpd[0] = q1 - q0; g_profUpd[1] = q2 - q1; g_profUpd[2] = q3 - q2; g_profUpd[3] = q4 - q3; g_profUpd[4] = q5 - q4;)
     // pause, unless this tick already ended the level or the player
     if ((pressed & KEY_START) && g_gameSignal == GS_PLAY) g_gameSignal = GS_PAUSE;

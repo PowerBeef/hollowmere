@@ -81,7 +81,7 @@ static void update_target(void) {
         if (ox > 0x18000 || ox < -0x18000 || oy > 0x18000 || oy < -0x18000) continue;
         s32 d = dist_approx(ox, oy);
         if (d > best || d < 1) continue;
-        s32 dot = (s32)(((s64)ox * dx + (s64)oy * dy) >> 14);
+        s32 dot = ((ox >> 2) * dx + (oy >> 2) * dy) >> 12;      // (|ox|, |oy| under two tiles: it fits 32 bits)
         if (dot * 1000 < d * 840 && d > 0x6000) continue;   // ~33 deg cone (always if very close)
         if (!world_los(p->x, p->y, t->x, t->y)) continue;
         best = d;
@@ -91,7 +91,7 @@ static void update_target(void) {
     // creature (finale: take the lantern)
     if (g_cr.state == CR_PRAY && g_cr.dist < 0xE000) {
         s32 ox = g_cr.x - p->x, oy = g_cr.y - p->y;
-        s32 dot = (s32)(((s64)ox * dx + (s64)oy * dy) >> 14);
+        s32 dot = ((ox >> 2) * dx + (oy >> 2) * dy) >> 12;      // (|ox|, |oy| under two tiles: it fits 32 bits)
         if (dot * 1000 > g_cr.dist * 700) { g_target.kind = TGT_CREATURE; return; }
     }
     // fixtures (wardrobes, panels, exits...) in front, used from their facing side
@@ -105,7 +105,7 @@ static void update_target(void) {
         s32 d = dist_approx(ox, oy);
         if (d > bestI) continue;
         if (it->nx * -ox + it->ny * -oy <= 0) continue;               // behind it
-        s32 dot = (s32)(((s64)ox * dx + (s64)oy * dy) >> 14);
+        s32 dot = ((ox >> 2) * dx + (oy >> 2) * dy) >> 12;      // (|ox|, |oy| under two tiles: it fits 32 bits)
         if (dot * 1000 < d * 760 && d > 0x5000) continue;
         if (!world_los(p->x, p->y, ix + it->nx * 64, iy + it->ny * 64)) continue;   // a step out from the wall
         bestI = d; bi = k;

@@ -3,9 +3,10 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 #include "gba.h"
+#include "limits.h"
 
 #define MIX_LEN    224          // samples per frame at 13379 Hz
-#define NUM_VOICES 10
+#define NUM_VOICES MAX_VOICES
 
 typedef struct {
     const s8 *data;

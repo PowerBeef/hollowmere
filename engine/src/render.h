@@ -47,7 +47,7 @@ extern void col_one(u8 *p, int n, const u8 *tex, const u8 *cm, u32 tp, u32 step)
 
 extern s16 g_camX[VIEW_W];
 extern u8  g_coneOf[VIEW_W];
-extern u8  g_flashW[NCONE][256];
+extern u8  (*g_flashW)[256];           // [NCONE][256]: the flashlight table in use (lighting.c)
 // What a column's doorways hide of the objects seen through them: anything
 // farther than clipDepth (the nearest opening) is cut off above row clipTop
 // (the bottom of that opening's lintel). A column that looks through two or

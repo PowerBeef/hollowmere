@@ -51,6 +51,8 @@ def main():
         tot += fps
         if fps < floor: slow.append(n)
         print(f"{n:>10} {fps:5.1f} fps  detail level {q}  update {upd:7d}  render {raw:7d}{'   BELOW %.1f' % floor if fps < floor else ''}")
+    print(f"(timed in {harness.emulator()}: an emulator's model of the hardware. Nothing here has been run on a console, which may "
+          f"read video memory more slowly.)")
     print(f"{'mean':>10} {tot / len(rows):5.1f} fps")
     if slow:
         print(f"fps.py: below {floor} fps at: {', '.join(slow)}", file=sys.stderr)

@@ -1,12 +1,24 @@
 /* SPDX-License-Identifier: MIT */
-/* Hollowmere GBA linker script */
+/* Hollowmere GBA linker script. The Makefile runs it through the C
+   preprocessor first, for the constants of limits.h. */
+#include "limits.h"
 OUTPUT_FORMAT("elf32-littlearm")
 OUTPUT_ARCH(arm)
 ENTRY(_start)
 
+/* Fast RAM, from the bottom: IWRAM code and data, the renderer's and the
+   mixer's variables, then the main stack growing down from __stack_top (the
+   BIOS and the interrupt entry own the 128 bytes above it, see crt0.s).
+   STACK_MIN is the deepest the stack has been measured (1,020 bytes in the
+   test ROM, engine/tools/stackcheck.py) and 256 bytes over: code or data
+   that would leave it less fails the link here, instead of the stack running
+   into the renderer's tables at run time. */
+__stack_top = 0x03007F80;
+STACK_MIN   = 1280;
+
 MEMORY {
     rom   : ORIGIN = 0x08000000, LENGTH = 32M
-    iwram : ORIGIN = 0x03000000, LENGTH = 32K - 0x400
+    iwram : ORIGIN = 0x03000000, LENGTH = 0x7F80 - 1280
     /* 0x02000000-0x02000FFF: light grid; 0x02038000-0x0203FFFF: floor material bank */
     ewram : ORIGIN = 0x02001000, LENGTH = 0x37000
 }
@@ -47,6 +59,20 @@ g_covT      = 0x06017880;   /* occluder spans: s16 x 240 */
 g_covB      = 0x06017A60;
 g_covF      = 0x06017C40;   /* s32 x 240 -> 0x06018000 */
 
+/* The tables above are placed by hand for these sizes. A limit raised in
+   limits.h without moving them fails here. */
+ASSERT(g_colormap + NUM_LIGHT * 256 <= 0x0600A960, "gba.ld: g_colormap (NUM_LIGHT) runs out of its free block")
+ASSERT(g_vf + 4 * MAX_MODEL_VERTS <= g_vr && g_vr + 4 * MAX_MODEL_VERTS <= g_vz && g_vz + 4 * MAX_MODEL_VERTS <= g_sx &&
+       g_sx + 4 * MAX_MODEL_VERTS <= g_sy && g_sy + 4 * MAX_MODEL_VERTS <= g_sw && g_sw + 4 * MAX_MODEL_VERTS <= g_vmark &&
+       g_vmark + 2 * MAX_MODEL_VERTS <= g_clipTop, "gba.ld: the vertex tables are placed for fewer vertices than MAX_MODEL_VERTS")
+ASSERT(g_clipTop + 2 * VIEW_W <= g_clipDepth && g_clipDepth + 4 * VIEW_W <= g_zmax8 && g_zmax8 + 4 * (VIEW_W / 8) <= g_zmin8 &&
+       g_zmin8 + 4 * (VIEW_W / 8) <= g_cdmin8 && g_cdmin8 + 4 * (VIEW_W / 8) <= g_camX && g_camX + 2 * VIEW_W <= g_coneOf &&
+       g_coneOf + VIEW_W <= g_rowDist2 && g_zbuf + 4 * VIEW_W <= g_polyPV, "gba.ld: the per-column tables are placed for fewer columns than VIEW_W")
+ASSERT(g_faceKey + 2 * MAX_MODEL_FACES <= g_voiceVol, "gba.ld: g_faceKey is placed for fewer faces than MAX_MODEL_FACES")
+ASSERT(g_voiceVol + 4 * MAX_VOICES <= 0x06014000, "gba.ld: g_voiceVol (MAX_VOICES) runs into the OBJ tiles")
+ASSERT(g_covT + 2 * VIEW_W <= g_covB && g_covB + 2 * VIEW_W <= g_covF && g_covF + 4 * VIEW_W <= 0x06018000,
+       "gba.ld: the occluder tables are placed for fewer columns than VIEW_W")
+
 SECTIONS
 {
     .text : {
@@ -86,6 +112,7 @@ SECTIONS
         . = ALIGN(4);
         __bss_end = .;
     } > iwram
+    ASSERT(__bss_end + STACK_MIN <= __stack_top, "fast RAM is full: under STACK_MIN bytes are left for the stack (move code or data out of the *.iwram.c files)")
 
     __ewram_lma = __iwram_lma + SIZEOF(.iwram);
     .ewram : AT(__ewram_lma) {

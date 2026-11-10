@@ -63,7 +63,7 @@ CBASE   := $(ARCH) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-in
 CTHUMB  := $(CBASE) -mthumb
 CARM    := $(CBASE) -marm -O3 -mlong-calls -fno-tree-loop-distribute-patterns
 ASFLAGS := $(ARCH) $(VDEFS) $(DEFS) -x assembler-with-cpp -I.
-LDFLAGS := $(ARCH) -mthumb -nostartfiles -T $(ESRC)/gba.ld -Wl,-Map,$(ELF:.elf=.map) \
+LDFLAGS := $(ARCH) -mthumb -nostartfiles -T $(OBJ)/gba.ld -Wl,-Map,$(ELF:.elf=.map) \
            -Wl,--gc-sections -specs=nano.specs
 DEPFLAGS = -MMD -MP -MF $(@:.o=.d)
 
@@ -99,7 +99,7 @@ $(IMAGE): $(ELF)
 	python3 engine/tools/fixheader.py $@.tmp '$(GAME_TITLE)' '$(GAME_CODE)' '$(MAKER_CODE)'
 	mv $@.tmp $@
 
-$(ELF): $(OBJS) $(ESRC)/gba.ld
+$(ELF): $(OBJS) $(OBJ)/gba.ld
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lc -lgcc
 
 # Objects depend on the flags they were built with: a different DEFS (or a
@@ -108,6 +108,10 @@ FLAGSIG := $(CC) $(CTHUMB) / $(CARM) / $(ASFLAGS) / $(LDFLAGS)
 $(OBJ)/.flags: FORCE | $(OBJ)
 	@echo '$(FLAGSIG)' | cmp -s - $@ || echo '$(FLAGSIG)' > $@
 BUILDDEPS := $(OBJ)/.flags Makefile $(GAME)/game.mk
+
+# the linker script takes its sizes from limits.h, through the preprocessor
+$(OBJ)/gba.ld: $(ESRC)/gba.ld $(ESRC)/limits.h $(BUILDDEPS)
+	$(CC) -E -P -x c -I$(ESRC) $< -o $@
 
 # the hottest ARM code is built at -O2 (smaller, so more of it fits IWRAM)
 $(OBJ)/objects.iwram.o $(OBJ)/render.iwram.o $(OBJ)/audio.iwram.o: $(OBJ)/%.iwram.o: %.iwram.c $(BUILDDEPS) | $(GENFILES)

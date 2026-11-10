@@ -16,7 +16,7 @@ int g_numSprites;
 const LevelDef *g_level;
 const u8 *g_cellFlags;
 
-EWRAM_BSS static u8 s_visbuf[8192] ALIGN4;
+EWRAM_BSS static u8 s_visbuf[MAX_LIGHT_BYTES] ALIGN4;
 EWRAM_BSS static u8 s_flatTmp[2][4096] ALIGN4;
 
 EWRAM_BSS DynLight g_dlights[MAX_DLIGHTS];

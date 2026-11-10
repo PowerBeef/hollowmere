@@ -67,7 +67,13 @@ static inline void prof_start(void) {
     REG_TM2CNT_L = 0; REG_TM3CNT_L = 0;
     REG_TM3CNT_H = 0x84; REG_TM2CNT_H = 0x80;
 }
-static inline u32 prof_read(void) { return ((u32)REG_TM3CNT_L << 16) | REG_TM2CNT_L; }
+// (the two halves are read one after the other: when the low one wraps in
+// between, the high one read first is one short, 65,536 cycles in all)
+static inline u32 prof_read(void) {
+    u32 hi = REG_TM3CNT_L, lo = REG_TM2CNT_L, hi2 = REG_TM3CNT_L;
+    if (hi2 != hi) lo = REG_TM2CNT_L;
+    return (hi2 << 16) | lo;
+}
 
 // --------------------------------------------------------------- splash
 static void splash(void) {
@@ -87,6 +93,20 @@ static void splash(void) {
 
 // --------------------------------------------------------------- play
 u32 g_renderCount, g_profUpdate;
+// the detail governor's state (render_frame)
+static u8 s_q, s_hold, s_since = 255;
+static u16 s_wait = 8, s_stale;
+static u32 s_prevWork, s_tried, s_failed = 0xFFFFFFFF;       // the frame cost the last try up started from; the one that failed
+static s32 s_failX, s_failY;                                 // ... and where the camera was
+static u16 s_failA;
+// a new scene (a level just loaded, a checkpoint restored): full detail
+// until its frames prove too slow, which takes one frame per level
+static void governor_reset(void) { s_q = 0; s_hold = 0; s_since = 255; s_wait = 8; s_prevWork = 0; s_failed = 0xFFFFFFFF; s_stale = 0; }
+
+// Draws a frame and waits for it to be shown. The governor adds the time
+// since the last prof_start() (the game update that led to this frame) to
+// the time of the render: every caller starts the timer before its update,
+// or just before the call when it renders without one.
 static void render_frame(void) {
     g_profUpdate = prof_read();
     prof_start();
@@ -125,22 +145,33 @@ static void render_frame(void) {
         // once, wait longer before the next try.
         // (Successive frames alternate in cost by 20-25k: going up is judged
         // on the mean of the last two, going down on each frame.)
-        static u8 s_q, s_hold, s_since;
-        static u16 s_wait = 8;
-        static u32 s_prevWork;
+        // (A frame whose update drew a line of text is no measure of the
+        // scene: it counts as its predecessor did.)
         u32 work = g_profUpdate + g_profRaw;
+        if (g_hudDrew) { g_hudDrew = 0; if (s_prevWork) work = s_prevWork; }
         u32 pair = (work + s_prevWork) >> 1;
         s_prevWork = work;
         if (s_since < 255) s_since++;
         if (work > 820000) {
             if (s_q < 7) {
                 s_q++;
-                if (s_since <= 2) s_wait = s_wait < 240 ? s_wait * 2 : 240;    // the try failed
+                if (s_since <= 2) {                 // the try failed
+                    s_wait = s_wait < 240 ? s_wait * 2 : 240;
+                    s_failed = s_tried;             // ... from frames this cheap, here: no use trying again as things are
+                    s_failX = g_cam.x; s_failY = g_cam.y; s_failA = g_cam.angle;
+                }
             }
             s_hold = 0;
-        } else if (pair < 770000) {
-            if (++s_hold >= s_wait && s_q > 0) { s_q--; s_hold = 0; s_since = 0; }
+        } else if (pair < 770000 && (pair < s_failed - (s_failed >> 5) || s_stale > 600 ||
+                                     dist_approx(g_cam.x - s_failX, g_cam.y - s_failY) > 0x8000 ||
+                                     (u16)(g_cam.angle - s_failA + 0x1000) > 0x2000)) {
+            // (not while the view is the one in which the last try failed and
+            // costs what it did: a try that fails is a frame dropped. Half a
+            // tile or a sixteenth of a turn away, 3% cheaper, or half a minute
+            // on, it is worth another.)
+            if (++s_hold >= s_wait && s_q > 0) { s_q--; s_hold = 0; s_since = 0; s_tried = pair; s_stale = 0; }
         } else s_hold = 0;
+        if (s_stale < 0xFFFF) s_stale++;
         if (s_since > 60 && s_wait > 8) { s_wait--; }
         extern u32 g_lodScale;
         extern s32 g_halfDist, g_floorSplit, g_wallHalfLh, g_fullC0, g_fullC1;
@@ -205,6 +236,7 @@ static void death_sequence(void) {
 static void level_transition(int next) {
     for (int i = 0; i <= 16; i += 2) {
         g_fx.fade = i;
+        prof_start();
         game_update();
         render_frame();
     }
@@ -218,8 +250,10 @@ static void level_transition(int next) {
 
 static void fade_in_game(void) {
     g_fx.mode3d = 1;
+    governor_reset();
     for (int i = 16; i >= 0; i -= 2) {
         g_fx.fade = i;
+        prof_start();
         game_update();
         render_frame();
     }
@@ -263,14 +297,16 @@ static void play(void) {
             g_fx.mode3d = 1;
             g_keyPressAcc = 0;
             last = g_vblanks;
+            prof_start();               // (the time spent away is not this frame's)
             break;
         case GS_MAP:
             g_gameSignal = GS_PLAY;
             ui_map();
             g_fx.mode3d = 1;
-            for (int i = 16; i >= 0; i -= 2) { g_fx.fade = i; render_frame(); }   // back to the view, the game still held
+            for (int i = 16; i >= 0; i -= 2) { g_fx.fade = i; prof_start(); render_frame(); }   // back to the view, the game still held
             g_keyPressAcc = 0;
             last = g_vblanks;
+            prof_start();               // (the time spent away is not this frame's)
             break;
         case GS_DEAD:
             death_sequence();
@@ -279,6 +315,7 @@ static void play(void) {
             g_keyPressAcc = 0;          // nothing pressed during the death screens carries over
             fade_in_game();
             last = g_vblanks;
+            prof_start();               // (the time spent away is not this frame's)
             break;
         case GS_EXIT:
             level_transition(g_nextLevel);
@@ -287,12 +324,13 @@ static void play(void) {
             g_keyPressAcc = 0;          // nor during the chapter card
             fade_in_game();
             last = g_vblanks;
+            prof_start();               // (the time spent away is not this frame's)
             break;
         }
         if (g_gameSignal == GS_ENDING) {
             int all = 1;
             for (int i = 0; i < NUM_NOTES; i++) if (!((g_state.notesFound >> i) & 1)) all = 0;
-            for (int i = 0; i <= 16; i++) { g_fx.fade = i; render_frame(); }
+            for (int i = 0; i <= 16; i++) { g_fx.fade = i; prof_start(); render_frame(); }
             save_erase();
             ui_ending(all);
             return;
@@ -310,6 +348,8 @@ int main(void) {
     pal_bg_game();
     bios_lz77_wram(cmap_default, g_colormapSrc);
     render_init();
+    // the flashlight's states the game jumps between: on, off, and the dip of a flicker (player.c)
+    render_flash_warm(256); render_flash_warm(0); render_flash_warm(256 / 5);
     fx_init();
     hud_init();
     audio_init();

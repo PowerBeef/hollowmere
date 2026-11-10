@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Looks for pixels the renderer leaves undrawn, from every place the player
 can stand: sweep.py OUTDIR [--every N] [--level L] [--views FILE] [--keep] [--rom ROM]
+With --fps [--min FPS] it measures the frame rate at those places instead
+(the governor on, two seconds a view after it has settled) and exits 1 when
+a view is under FPS (default 19.5).
 
 In every free quarter of every cell of every level (centre and four corners),
 8 to 16 headings each, at three detail levels with the frame-rate governor
@@ -114,6 +117,19 @@ def sweep(level, views, out, keep=False, rom=None, elf=None):
     return bad
 
 
+def fps_sweep(level, views, out, rom=None, elf=None):
+    """{view number: (x, y, heading, frames a second, detail level)} for every view."""
+    S = harness.boot() + harness.dismiss()
+    if level:
+        S += harness.load_level(level)
+    S += ["run 300"] + harness.dismiss() + ["run 600"] + harness.dismiss() + ["poke32 {g_govOff} 0"]
+    for i, x, y, a in views:
+        S += harness.teleport(x, y, a) + harness.dismiss() + ["run 90", "peek32 {g_renderCount}", "run 120", "peek32 {g_renderCount}", "peek8 {g_quality}"]
+    kw = dict(rom=rom, elf=elf) if rom else {}
+    v = harness.run(S, out, f"fps{level}", timeout=7200, **kw).values()
+    return {i: (x, y, a, (v[3 * k + 1] - v[3 * k]) / (120 / 59.7275), v[3 * k + 2]) for k, (i, x, y, a) in enumerate(views)}
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1].startswith('-'):
         sys.exit(__doc__)
@@ -134,6 +150,19 @@ def main():
             views = [v for v in views if v[0] in pick]
         views = views[::every]
         rom = opt('--rom')
+        if '--fps' in sys.argv:
+            least = float(opt('--min', 19.5))
+            res = fps_sweep(lv, views, out, rom=rom, elf=rom[:-4] + '.elf' if rom else None)
+            slow = {i: r for i, r in res.items() if r[3] < least}
+            result[lv] = {i: list(r) for i, r in res.items()}
+            nviews += len(views)
+            total += len(slow)
+            full = sum(1 for r in res.values() if r[4] == 0)
+            print(f"level {lv}: {len(views)} views, {len(slow)} under {least:g} fps, {sum(1 for r in res.values() if r[3] < 15.5)} at 15 fps or less, "
+                  f"{full} ({100 * full // max(1, len(views))}%) at full detail")
+            for i, (x, y, a, f, q) in sorted(slow.items(), key=lambda kv: kv[1][3])[:12]:
+                print(f"   view {i}: ({x:.2f}, {y:.2f}) heading {a:g}: {f:.1f} fps at detail level {q}")
+            continue
         bad = sweep(lv, views, out, keep='--keep' in sys.argv, rom=rom, elf=rom[:-4] + '.elf' if rom else None)
         result[lv] = bad
         nviews += len(views)
@@ -142,6 +171,10 @@ def main():
         print(f"level {lv}: {len(views)} views, {len(bad)} with undrawn pixels" + (f" (worst {worst} pixels)" if bad else ""))
         for i, (x, y, a, d) in sorted(bad.items())[:12]:
             print(f"   view {i}: ({x:.2f}, {y:.2f}) heading {a:g}: " + ', '.join(f"detail {q}: {n}" for q, n in sorted(d.items())))
+    if '--fps' in sys.argv:
+        json.dump(result, open(os.path.join(out, 'fps.json'), 'w'), indent=1)
+        print(f"sweep: {nviews} views, {total} under {float(opt('--min', 19.5)):g} fps")
+        return 1 if total else 0
     json.dump(result, open(os.path.join(out, 'holes.json'), 'w'), indent=1)
     print(f"sweep: {nviews} views x {len(DETAIL)} detail levels, {total} with undrawn pixels")
     return 1 if total else 0

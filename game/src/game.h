@@ -6,12 +6,9 @@
 #include "engine.h"
 #include "leveldef.h"
 
-#define MAX_THINGS 112
-#define NUM_FLAGS  64
 
 // The script threads a checkpoint remembers: which event each is running,
 // how far in, and how long it still waits.
-#define MAX_THREADS 8
 typedef struct { u8 ev[MAX_THREADS]; u16 pc[MAX_THREADS]; s16 wait[MAX_THREADS]; } ScriptSave;
 
 // ---------------------------------------------------------------- save
@@ -31,13 +28,13 @@ typedef struct {
     u32 playFrames;
     u8  thingTaken[MAX_THINGS / 8];
     u8  thingShown[MAX_THINGS / 8];
-    u8  trigFired[4];
-    u8  roomsSeen[4];           // map: rooms of this floor visited (bit per room)
+    u8  trigFired[MAX_TRIGGERS / 8];
+    u8  roomsSeen[MAX_ROOMS / 8];           // map: rooms of this floor visited (bit per room)
     u8  doorState[MAX_DOORS];   // DS_*
-    u8  propHidden[20];         // script-toggled furniture
-    u8  propSet[20];
+    u8  propHidden[MAX_PROPS / 8];   // script-toggled furniture
+    u8  propSet[MAX_PROPS / 8];
     u8  flags[NUM_FLAGS / 8];
-    u8  lightLevel[16];         // per light group brightness /16
+    u8  lightLevel[MAX_LIGHT_GROUPS];         // per light group brightness /16
     ScriptSave script;          // the level scripts in flight (engine/src/script.c)
     s32 px, py;
     u16 pangle;
@@ -49,6 +46,11 @@ typedef struct {
 
 #define SAVE_MAGIC   0x484C5733u   // "HLW3"
 #define SAVE_VERSION 3             // of this layout; any other is not loaded
+
+_Static_assert(MAX_KEYS == 16 && MAX_NOTES == 32 && MAX_ROOMS == 32 && MAX_TRIGGERS == 32 && MAX_THINGS % 8 == 0 && MAX_PROPS % 8 == 0 &&
+               NUM_FLAGS % 8 == 0 && NUM_SCRIPT_FLAGS == NUM_FLAGS - 1,
+               "limits.h against the save state: keys and notes are bit masks in a u16 and a u32, rooms and triggers in 32 bits");
+#define FLAG_GAME (NUM_FLAGS - 1)      // the one flag the scripts cannot name (the compiler hands out 0..NUM_SCRIPT_FLAGS-1)
 
 extern SaveState g_state;
 extern SaveState g_checkpoint;

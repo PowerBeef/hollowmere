@@ -2,8 +2,10 @@
 """Flashlight beam and night-vision base tables (consumed by the engine)."""
 import numpy as np
 
+import limits
+
 FOCAL = 160          # physical px per tile (rows)
-VIEW_W = 240
+VIEW_W = limits.VIEW_W
 PLANE = 0.75
 NCONE = 16
 NPAIR_F = 35         # floor row pairs below the eye line

@@ -34,6 +34,7 @@
 #include <mgba/core/core.h>
 #include <mgba/core/blip_buf.h>
 #include <mgba/core/log.h>
+#include <mgba/core/version.h>
 #include <mgba/internal/gba/gba.h>
 #include <mgba/internal/arm/arm.h>
 #include <mgba-util/vfs.h>
@@ -230,10 +231,11 @@ int main(int argc, char **argv) {
     int ai = 1;
     while (ai < argc && argv[ai][0] == '-' && argv[ai][1] == '-') {
         if (!strcmp(argv[ai], "--lenient")) lenient = 1;
+        else if (!strcmp(argv[ai], "--version")) { printf("%s %s\n", projectName, projectVersion); return 0; }
         else { fprintf(stderr, "harness: unknown option %s\n", argv[ai]); return 2; }
         ai++;
     }
-    if (argc - ai < 1) { fprintf(stderr, "usage: harness [--lenient] rom.gba [script | -] [savefile]\n"); return 2; }
+    if (argc - ai < 1) { fprintf(stderr, "usage: harness [--lenient] rom.gba [script | -] [savefile]   or   harness --version\n"); return 2; }
     const char *rom = argv[ai], *script = argc - ai > 1 ? argv[ai + 1] : "-", *save = argc - ai > 2 ? argv[ai + 2] : NULL;
     { FILE *t = fopen(rom, "rb"); if (!t) { fprintf(stderr, "harness: cannot read ROM %s\n", rom); return 2; } fclose(t); }
     mLogSetDefaultLogger(&logger);

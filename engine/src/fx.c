@@ -8,7 +8,7 @@ FxState g_fx;
 
 #include "fxint.h"
 EWRAM_BSS u32 s_line[2][FX_LINES * 2];
-EWRAM_BSS u16 s_win[2][160];
+EWRAM_BSS u16 s_win[2][161];        // a row per line, and the one the last line's copy reads ahead
 u8 s_cur;                   // table set currently displayed
 u8 s_ready;                 // next set prepared
 s16 s_m[2][4];

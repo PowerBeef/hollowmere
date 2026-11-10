@@ -18,13 +18,26 @@ s16 g_fear;
 #define SPD_SCRIPT  1000
 #define CATCH_DIST  0xA000     // 0.625 tiles
 
-EWRAM_BSS static u8  s_field[FLOW_CELLS];
+// Her flow field (engine/src/flow.h): the steps from every cell to the cell
+// she is making for. A new one is worked out a few cells per tick in the
+// second buffer while she follows the one she has, and swapped in when done
+// (the whole search in one tick was a spike of 150,000 cycles each time the
+// player she chases crossed into another cell).
+EWRAM_BSS static u8  s_fieldBuf[2][FLOW_CELLS];
 EWRAM_BSS static u16 s_queue[FLOW_CELLS];
-static Flow s_flow;
-static int s_fieldTarget = -1;
-static u8  s_fieldDoors;         // g_doorEpoch when the field was built
-static u8 s_vis[9][9];
+EWRAM_BSS static u8  s_pass[FLOW_CELLS];     // where one can step from each cell (flow.h), per level
+static u8 *s_field = s_fieldBuf[0];          // the field she follows
+static u8  s_fieldOk;                        // ... is a field for somewhere (else: nothing to follow yet)
+static Flow s_flow;                          // the one in the making, if s_flowBusy
+static u8  s_flowBusy;
+static int s_fieldTarget = -1;               // the cell the newest field (done or in the making) leads to
+static u8  s_fieldDoors;                     // g_doorEpoch when it was begun
+#define FLOW_PER_TICK 32
+static u8 s_vis[9][9];                   // cells her lantern reaches, around tile s_visTile
 static int s_visTile = -1;
+EWRAM_BSS static u8 s_visNew[9][9];      // the same for the tile she has just entered, in the making
+static s8  s_visRow = -1;                // ... its next row (-1: none in the making)
+static s16 s_visNewTile;
 static u32 s_rngState = 99;
 
 static u32 rnd(void) { s_rngState = s_rngState * 1103515245u + 12345u; return (s_rngState >> 16) & 0x7FFF; }
@@ -57,18 +70,47 @@ static int step_ok(int c, int dir) {
     return edge_ok(world_edge_dir(x, y, dir));
 }
 
-// one step of the flow field (engine/src/flow.h): through an edge she can
-// pass, into a cell she can stand in
-static int field_step(int c, int dir) {
+// The map as the flow field needs it, once per level: from each cell, the
+// directions in which there is a cell she can stand in behind an edge that
+// is always open (or an arch), and those behind a door, which is asked
+// about when the search gets there. (From any cell: the search starts at
+// her goal, which can be a cell the player stands in beside furniture that
+// leaves no room for her.)
+static void build_pass(void) {
     static const s8 to[4] = { -MAP_W, 1, MAP_W, -1 };
-    return step_ok(c, dir) && cell_free(c + to[dir]);
+    for (int c = 0; c < FLOW_CELLS; c++) {
+        int m = 0, x = c & 31, y = c >> 5;
+        for (int d = 0; d < 4; d++) {
+            if ((d == 0 && y == 0) || (d == 1 && x == 31) || (d == 2 && y == 31) || (d == 3 && x == 0)) continue;
+            if (!cell_free(c + to[d])) continue;
+            u8 e = world_edge_dir(x, y, d);
+            if (!e || g_edgeTypes[e].kind == EK_ARCH) m |= 1 << d;
+            else if (g_edgeTypes[e].kind == EK_DOOR) m |= 16 << d;
+        }
+        s_pass[c] = m;
+    }
 }
 
+static void field_swap(void) {
+    s_field = s_flow.dist;
+    s_fieldOk = 1;
+    s_flowBusy = 0;
+}
+
+// a field towards this cell: at once if she has none to follow meanwhile
 static void build_field(int target) {
-    flow_begin(&s_flow, s_field, s_queue, world_inside(target & 31, target >> 5) ? target : -1);
-    while (!flow_run(&s_flow, FLOW_CELLS, field_step)) { }
+    u8 *spare = s_field == s_fieldBuf[0] && s_fieldOk ? s_fieldBuf[1] : s_fieldBuf[0];
+    if (!s_fieldOk) spare = s_fieldBuf[0];
+    flow_begin(&s_flow, spare, s_queue, world_inside(target & 31, target >> 5) ? target : -1);
     s_fieldTarget = target;
     s_fieldDoors = g_doorEpoch;
+    s_flowBusy = 1;
+    if (!s_fieldOk) { while (!flow_run(&s_flow, FLOW_CELLS, s_pass, step_ok)) { } field_swap(); }
+}
+
+// each tick: a little more of the field in the making
+static void field_tick(void) {
+    if (s_flowBusy && flow_run(&s_flow, FLOW_PER_TICK, s_pass, step_ok)) field_swap();
 }
 
 static int cell_of(s32 x, s32 y) { return ((y >> 16) << 5) | (x >> 16); }
@@ -139,8 +181,9 @@ void creature_init(int mode) {
     g_cr.mode = mode;
     g_cr.breath = g_cr.lantern = -1;
     g_cr.cooldown = mode >= 1 ? 60 * 25 : 0;
-    s_fieldTarget = -1;
-    s_visTile = -1;
+    s_fieldTarget = -1; s_fieldOk = 0; s_flowBusy = 0;
+    build_pass();
+    s_visTile = -1; s_visRow = -1;
     s_rngState ^= g_frame * 2654435761u;
 }
 
@@ -168,8 +211,8 @@ void creature_spawn(s32 x, s32 y, int state) {
     g_cr.knowsHiding = 0;
     g_cr.screamed = 0;
     g_cr.angle = angle_to(g_player.x - x, g_player.y - y);
-    s_fieldTarget = -1;
-    s_visTile = -1;
+    s_fieldTarget = -1; s_fieldOk = 0; s_flowBusy = 0;
+    s_visTile = -1; s_visRow = -1;
     if (g_cr.breath < 0 || !snd_active(g_cr.breath)) g_cr.breath = snd_play3d(SND_CBREATH, x, y, 120, 0, 140);
     if (state == CR_PATROL) g_cr.timer = 30;
     if (state == CR_PRAY) {
@@ -262,17 +305,29 @@ void creature_light(void) {
     int tile = (ty << 5) | tx;
     int cx = g_cr.x >> 15, cy = g_cr.y >> 15;
     int key = (cy << 6) | cx;
-    if (tile != s_visTile) {
-        s_visTile = tile;
-        s_litKey = -1;
-        for (int j = -4; j <= 4; j++)
+    // What the lantern can reach: the cells she has a line of sight to in
+    // the 9 x 9 around her tile. Worked out again when she enters another
+    // tile, two rows a frame (all 81 lines at once were a spike of 100,000
+    // cycles); until it is done the light keeps the shape it had.
+    if (tile != s_visTile && s_visRow < 0) { s_visRow = 0; s_visNewTile = tile; }
+    if (s_visRow >= 0) {
+        int vx = s_visNewTile & 31, vy = s_visNewTile >> 5;
+        for (int n = s_visTile < 0 ? 9 : 2; n > 0 && s_visRow < 9; n--, s_visRow++) {      // (all of it when she has just appeared)
+            int j = s_visRow - 4;
             for (int i = -4; i <= 4; i++) {
-                int x = tx + i, y = ty + j;
-                if ((unsigned)x >= 32 || (unsigned)y >= 32) { s_vis[j + 4][i + 4] = 0; continue; }
-                s_vis[j + 4][i + 4] = world_inside(x, y) &&
-                                      world_los(g_cr.x, g_cr.y, (x << 16) + 0x8000, (y << 16) + 0x8000);
+                int x = vx + i, y = vy + j;
+                s_visNew[s_visRow][i + 4] = (unsigned)x < 32 && (unsigned)y < 32 && world_inside(x, y) &&
+                                            world_los(g_cr.x, g_cr.y, (x << 16) + 0x8000, (y << 16) + 0x8000);
             }
+        }
+        if (s_visRow == 9) {
+            memcpy(s_vis, s_visNew, sizeof s_vis);
+            s_visTile = s_visNewTile;
+            s_visRow = -1;
+            s_litKey = -1;
+        }
     }
+    tx = s_visTile & 31; ty = s_visTile >> 5;
     if (key != s_litKey) {
         // rebuild the list of lit light-grid cells around the lantern
         static const u8 fall[50] = {
@@ -313,10 +368,23 @@ static int move_toward_goal(s32 speed) {
     s32 tx, ty;
     if (c == goalCell || s_field[c] == 255) {
         tx = g_cr.goalX; ty = g_cr.goalY;
-        if (s_field[c] == 255 && c != goalCell) return 2;    // unreachable
+        if (s_field[c] == 255 && c != goalCell) {
+            if (s_flowBusy) { g_cr.moving = 0; return 0; }   // (the field she has is for her last goal: the new one is nearly there)
+            return 2;                                        // unreachable
+        }
     } else {
         int n = next_cell(c);
-        if (n < 0) return 2;
+        if (n < 0) {
+            // No way on from here though the field says there is one: it is
+            // for another goal (wait for the new one), or a door on it has
+            // been locked since. Then a fresh field tells whether another
+            // way exists.
+            g_cr.moving = 0;
+            if (s_flowBusy) return 0;
+            s_fieldOk = 0;
+            build_field(goalCell);
+            return s_field[c] == 255 ? 2 : 0;
+        }
         // a closed door between here and there: open it and wait
         int ddx = (n & 31) - (c & 31), ddy = (n >> 5) - (c >> 5);
         if (ddx == 0 || ddy == 0) {
@@ -325,7 +393,7 @@ static int move_toward_goal(s32 speed) {
             Door *d = world_door_on(e);
             if (d && d->open < 0xC000) {
                 // locked since she chose this way: not hers to open; she looks for another
-                if (!edge_ok(e)) { build_field(goalCell); g_cr.moving = 0; return 0; }
+                if (!edge_ok(e)) { s_fieldOk = 0; build_field(goalCell); g_cr.moving = 0; return 0; }
                 if (!d->moving) {
                     d->moving = 1;
                     g_state.doorState[d - g_doors] |= DS_OPEN;
@@ -344,8 +412,10 @@ static int move_toward_goal(s32 speed) {
     if (c == goalCell && d < 0x2000) { g_cr.moving = 0; return 1; }
     if (d < 1) return 1;
     s32 step = speed < d ? speed : d;
-    g_cr.x += (s32)(((s64)dx * step) / d);
-    g_cr.y += (s32)(((s64)dy * step) / d);
+    // (dx, dy: to the next cell's centre or within her own, under two tiles;
+    // a step is a few hundredths of one: the products fit 32 bits)
+    g_cr.x += dx * step / d;
+    g_cr.y += dy * step / d;
     g_cr.moving = 1;
     g_cr.anim += step;
     g_cr.strideAcc += step;
@@ -420,6 +490,7 @@ void creature_update(void) {
     }
 
     g_cr.pathAge++;
+    field_tick();
     s32 speed = SPD_PATROL;
     switch (g_cr.state) {
     case CR_SCRIPT:
@@ -515,7 +586,7 @@ void creature_update(void) {
         if (held) break;                 // (her prayer waits out the scene too)
         if (!g_cr.prayTurn && g_cr.timer == 120) {
             snd_play3d(SND_WHISPER, g_cr.x, g_cr.y, 190, 3600, 120);   // she stirs before turning
-            if (!script_flag(63)) { script_set_flag(63, 1); game_message(STR_M_STIRRING, 200); }
+            if (!script_flag(FLAG_GAME)) { script_set_flag(FLAG_GAME, 1); game_message(STR_M_STIRRING, 200); }
         }
         if (g_cr.timer > 0) g_cr.timer--;
         if (g_cr.timer == 0) {

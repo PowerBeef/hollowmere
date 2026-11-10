@@ -16,6 +16,7 @@ void hud_text(int line, const char *s, int frames, int color);
 void hud_message(const char *s, int frames);    // subtitle (auto wraps to 2 lines)
 void hud_clear(int line);
 void hud_update(void);
+extern u8 g_hudDrew;                            // set when a line's pixels were drawn (about 90,000 cycles, once)
 void hud_battery(int permille, int frames);
 void hud_set_visible(int on);
 int  hud_visible(void);

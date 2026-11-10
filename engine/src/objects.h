@@ -65,8 +65,6 @@ typedef struct {
     s8  light;       // light bonus
 } PropInst;
 #define PIF_HIDDEN 1
-#define MAX_PROPS  160
-#define MAX_DYNPROPS 12
 
 extern PropInst g_props[MAX_PROPS];
 extern int g_numProps;
@@ -80,8 +78,8 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0);
 // as a different model, or not at all)
 #define OBJ_NEAR     0x1800          // near plane, 0.09 tile
 #define OBJ_FARCULL  (12 << 16)
-#define OBJ_MAXV     128             // vertices and faces a model may have
-#define OBJ_MAXF     64
+#define OBJ_MAXV     MAX_MODEL_VERTS // vertices and faces a model may have (limits.h)
+#define OBJ_MAXF     MAX_MODEL_FACES
 
 // the model to draw for a prop whose centre is at depth fc: its far version
 // beyond the far distance (fixed, so the governor's level changes never swap

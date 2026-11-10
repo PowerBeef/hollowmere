@@ -7,7 +7,7 @@ import importlib
 import harness
 
 # SaveState g_state
-LEVEL, OBJECTIVE, KEYS, FUSES, PLACED, FLASH_ON, DEATHS = 4, 6, 12, 14, 15, 20, 22
+LEVEL, OBJECTIVE, KEYS, FUSES, PLACED, BATTERY, FLASH_ON, DEATHS = 4, 6, 12, 14, 15, 16, 20, 22
 TRIG_FIRED, FLAGS, LIGHT_LEVEL = 56, 144, 152
 # Creature g_cr
 CR_STATE, CR_X, CR_Y, CR_TIMER = 0, 4, 8, 34

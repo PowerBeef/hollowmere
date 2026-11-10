@@ -38,7 +38,7 @@ u8 g_multiAny;
 // g_camX (Q14 camera-plane coordinate per column), g_coneOf (flashlight cone
 // class per column, 0 = centre) and g_rowDist2 (floor pair distance, 8.8
 // tiles) live in VRAM (see gba.ld; rebuilt by render_enter_3d)
-EWRAM_BSS u8 g_flashW[NCONE][256];      // wall light by cone class and dist (1/16 tile)
+u8 (*g_flashW)[256];                    // wall light by cone class and dist (1/16 tile): one of lighting.c's tables
 // g_flatTbl / g_flatTblF (per-pair d<<16 | lc<<8 | lf, 0 ends) live in VRAM, see gba.ld
 extern u32 g_flatTbl[NCONE][NPAIR_C + 1];
 extern u32 g_flatTblF[NCONE][NPAIR_F - NPAIR_C + 1];

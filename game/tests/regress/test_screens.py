@@ -154,3 +154,25 @@ def test_shake_and_roll_stay_inside_the_view(t):
             rows = [(ref[n] + pc * sx + pd * sy) >> 8 for sx in (0, 239) for sy in (VIS0, VIS1 - 1)]
             t.check(ROW0 <= min(rows) and max(rows) < ROW1, f"frame {i // 8}: the screen shows view rows {min(rows)}..{max(rows)} (drawn: {ROW0}..{ROW1 - 1})")
     t.check(seen3d > 200, "the test did not see the 3D view")
+
+
+def test_detail_level_after_a_fade(t):
+    """The fade into a level, the fade back from the map and a visit to the
+    pause menu leave the detail governor where the scene's own cost puts it,
+    not at the bottom (it used to count the wait for the screen as work)."""
+    def watch(frames, step=10):
+        L = []
+        for _ in range(frames // step):
+            L += [f"run {step}", "peek8 {g_quality}"]
+        return L
+    L = hm.boot()                                          # ends on the fade into chapter I
+    L += watch(120) + ["run 600", "echo steady", "peek8 {g_quality}"]
+    L += ["hold SELECT", "run 50", "hold -", "run 30", "tap B", "run 60", "echo map"] + watch(60)
+    L += ["tap START", "run 60", "tap A", "run 20", "echo pause"] + watch(60)
+    r = t.run(L)
+    parts = dict(r.sections())
+    start = r.values()[:12]
+    steady = parts['steady'][0]
+    t.check(max(start[6:]) <= steady + 1, f"detail level over the first two seconds: {start}; the scene settles at {steady}")
+    t.check(max(parts['map']) <= steady + 1, f"detail level after closing the map: {parts['map']}; the scene settles at {steady}")
+    t.check(max(parts['pause']) <= steady + 1, f"detail level after the pause menu: {parts['pause']}; the scene settles at {steady}")

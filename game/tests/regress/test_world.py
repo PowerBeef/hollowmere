@@ -69,7 +69,7 @@ def test_door_locked_after_she_chose_her_way(t):
         return f"{{g_doors+{16 * i + 4}}}"
     L = hm.boot() + hm.dismiss() + ["run 300"] + hm.dismiss()
     L += [f"expect8 {{g_doors+{16 * CORRIDOR_DOOR}}} == 2 door {CORRIDOR_DOOR} is the drawing room's", f"expect8 {{g_doors+{16 * HALL_DOOR + 1}}} == 7 door {HALL_DOOR} is the hall's"]
-    L += hm.teleport(12.5, 4.5, 180) + hm.spawn(6.0, hm.CR_CHASE, settle=2)        # she stands in the corridor at (6.5, 4.5)
+    L += hm.teleport(12.5, 4.5, 180) + hm.spawn(6.0, hm.CR_CHASE)                  # she stands in the corridor at (6.5, 4.5)
     L += hm.teleport(1.5, 5.5, 90, settle=10)                                      # the player: in the drawing room, by that door
     L += [f"poke8 {{g_state+{64 + CORRIDOR_DOOR}}} {DS_LOCKED}", "run 600"]
     L += [f"peek16 {door(CORRIDOR_DOOR)}", f"peek16 {door(HALL_DOOR)}", "peeks32 {g_cr+4}", "peeks32 {g_cr+8}", f"peek16 {{g_state+{hm.DEATHS}}}"]

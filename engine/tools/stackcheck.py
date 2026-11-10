@@ -17,12 +17,12 @@ import harness
 import bench
 from views import VIEWS
 
-TOP = 0x03007F80
 
 
 def measure(tag, rom, elf, script, out):
     syms = harness.symbols(elf)
     be, irq = syms['__bss_end'], syms['g_irqStack']
+    TOP = syms.get('__stack_top', 0x03007F80)        # (gba.ld)
     script = script + [f"dump {be:#x} {TOP - be} {out}/{tag}_stack.bin", f"dump {irq:#x} 1024 {out}/{tag}_irq.bin"]
     harness.run(script, out, tag, rom=rom, elf=elf)
     res = []

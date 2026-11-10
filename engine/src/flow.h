@@ -3,12 +3,15 @@
 // cell, by breadth-first search. An enemy walks downhill on it.
 //
 //   Flow f;  flow_begin(&f, dist, queue, target);
-//   while (!flow_run(&f, 64, can_step)) ;     // or a slice of it per tick
+//   while (!flow_run(&f, 64, pass, door_ok)) ;     // or a slice of it per tick
 //
 // dist[cell] is 255 where the target cannot be reached (or the search has
-// not got there yet). can_step(cell, dir) says whether one can walk from
-// cell to its neighbour in direction dir (0 north, 1 east, 2 south, 3 west):
-// the edge between them is passable and the neighbour is a cell to stand in.
+// not got there yet). pass[cell] says where one can walk from a cell, a bit
+// per direction (0 north, 1 east, 2 south, 3 west): bit dir set = always
+// (the edge is open and the neighbour a cell to stand in), bit 4 + dir set =
+// ask door_ok(cell, dir) (a door that may be locked just now). The map does
+// not change, so a game works pass[] out once per level and a search costs
+// a few instructions a step.
 // Every cell enters the queue at most once, so a queue of MAP_W * MAP_H
 // entries cannot overflow; pushes are bounded all the same.
 #ifndef FLOW_H
@@ -38,21 +41,32 @@ static inline void flow_begin(Flow *f, u8 *dist, u16 *queue, int target) {
 }
 
 // expands up to `cells` cells; returns 1 when the field is complete
-static inline int flow_run(Flow *f, int cells, FlowStep can_step) {
-    while (f->head < f->tail && cells-- > 0) {
-        int c = f->queue[f->head++];
-        int d = f->dist[c] + 1;
+static inline int flow_run(Flow *f, int cells, const u8 *pass, FlowStep door_ok) {
+    static const s8 to[4] = { -MAP_W, 1, MAP_W, -1 };
+    u8 *dist = f->dist;
+    u16 *queue = f->queue;
+    unsigned head = f->head, tail = f->tail;
+    while (head < tail && cells-- > 0) {
+        int c = queue[head++];
+        int d = dist[c] + 1;
         if (d >= FLOW_FAR) continue;                     // (farther than a byte counts)
+        unsigned m = pass[c];
         int x = c & (MAP_W - 1), y = c >> MAP_SHIFT;
-        int nb[4] = { y > 0 ? c - MAP_W : -1, x < MAP_W - 1 ? c + 1 : -1, y < MAP_H - 1 ? c + MAP_W : -1, x > 0 ? c - 1 : -1 };
-        for (int k = 0; k < 4; k++) {
-            int n = nb[k];
-            if (n < 0 || f->dist[n] != FLOW_FAR || !can_step(c, k)) continue;
-            f->dist[n] = d;
-            if (f->tail < FLOW_CELLS) f->queue[f->tail++] = n;
+        if (y == 0) m &= ~0x11u;                         // (whatever pass[] says, not off the map)
+        if (x == MAP_W - 1) m &= ~0x22u;
+        if (y == MAP_H - 1) m &= ~0x44u;
+        if (x == 0) m &= ~0x88u;
+        for (int k = 0; k < 4 && m; k++, m >>= 1) {
+            if (!(m & 0x11)) continue;
+            int n = c + to[k];
+            if (dist[n] != FLOW_FAR) continue;
+            if (!(m & 1) && !door_ok(c, k)) continue;
+            dist[n] = d;
+            if (tail < FLOW_CELLS) queue[tail++] = n;
         }
     }
-    if (f->head >= f->tail) f->done = 1;
+    f->head = head; f->tail = tail;
+    if (head >= tail) f->done = 1;
     return f->done;
 }
 

@@ -30,7 +30,7 @@ rom_start:
     @ pushes 24 bytes there, isr_master 8 more before switching away)
     mov     r0, #0x1F
     msr     cpsr_c, r0
-    ldr     sp, =0x03007F80
+    ldr     sp, =__stack_top            @ (gba.ld)
 
     @ copy .iwram (code + data) to IWRAM
     ldr     r0, =__iwram_lma

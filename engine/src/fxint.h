@@ -12,6 +12,6 @@ extern s16 s_m[2][4];
 extern s32 s_refX[2], s_refY[2];
 extern u8 s_cur, s_ready;
 extern u8 s_hdma[2];
-extern u16 s_win[2][160];
+extern u16 s_win[2][161];
 extern u8 s_fxVig[2], s_fxDark[2], s_fxFade[2], s_fxWhite[2], s_fxMosaic[2], s_fx3d[2], s_fxSlits[2], s_fxLb[2];
 #endif
