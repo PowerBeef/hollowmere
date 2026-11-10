@@ -64,7 +64,7 @@ Explore the manor floor by floor, piece together what happened from the notes le
 
 ### Play it
 
-Download `Hollowmere.gba` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) (or `Hollowmere-v1.1.zip`, which holds the same file) and run it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
+Download `Hollowmere-v1.1.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
 
 | Button | Action |
 |---|---|
