@@ -44,23 +44,29 @@ def test_no_undrawn_pixels(t):
             t.check(c[0] == 0, f"level {level} view {name}: {c[0]} pixels not drawn (box {c[1:]})")
 
 
-def test_note_on_a_table(t):
-    """The note lying on the library table is visible from every side."""
-    table = (2.0, 1.8)
+def test_things_on_tables(t):
+    """The ledger on the library table and the battery on the kitchen table
+    are visible from every side one can stand on."""
     import math
+    free = sweep.standable(0)
     L = hm.boot() + hm.dismiss() + ["run 300"] + hm.dismiss() + hm.HUD_OFF      # (no "Read note" prompt in the pictures)
-    spots = {'S': (2.0, 3.3), 'N': (2.0, 0.45), 'SW': (0.9, 2.9), 'NE': (3.1, 0.7)}
-    for tag, (x, y) in spots.items():
-        a = math.degrees(math.atan2(table[1] - y, table[0] - x)) % 360
-        L += ["poke32 {g_dbgFreeze} 0"] + hm.teleport(x, y, a) + hm.dismiss() + harness.FULL_DETAIL + FREEZE + ["run 24", f"shot {{out}}/with_{tag}.ppm"]
-    L += hm.hide_things()
-    for tag, (x, y) in spots.items():
-        a = math.degrees(math.atan2(table[1] - y, table[0] - x)) % 360
-        L += ["poke32 {g_dbgFreeze} 0"] + hm.teleport(x, y, a) + hm.dismiss() + harness.FULL_DETAIL + FREEZE + ["run 24", f"shot {{out}}/without_{tag}.ppm"]
+    spots = []
+    for name, (tx, ty) in (('ledger', (2.0, 1.8)), ('battery', (9.4, 2.0))):
+        for k in range(8):
+            for d in (1.4, 1.15, 1.7):
+                x, y = tx + d * math.cos(k * math.pi / 4), ty + d * math.sin(k * math.pi / 4)
+                if free(x, y):
+                    spots.append((f"{name}_{k * 45}", x, y, math.degrees(math.atan2(ty - y, tx - x)) % 360))
+                    break
+    for which in ('with', 'without'):
+        for tag, x, y, a in spots:
+            L += ["poke32 {g_dbgFreeze} 0"] + hm.teleport(x, y, a) + hm.dismiss() + harness.FULL_DETAIL + FREEZE + ["run 24", f"shot {{out}}/{which}_{tag}.ppm"]
+        L += hm.hide_things()
     t.run(L)
-    for tag in spots:
-        n, box = changed(t.image(f"with_{tag}.ppm"), t.image(f"without_{tag}.ppm"))
-        t.check(n >= 30, f"from the {tag}: the note shows in {n} pixels")
+    t.check(len(spots) >= 12, f"only {len(spots)} places to look from")
+    seen = {tag: changed(t.image(f"with_{tag}.ppm"), t.image(f"without_{tag}.ppm"))[0] for tag, *_ in spots}
+    hidden = [f"{tag} ({n} pixels)" for tag, n in seen.items() if n < 20]
+    t.check(not hidden, "not visible from: " + ', '.join(hidden))
 
 
 def cellar_view(x, y, deg, tag, sister=None):

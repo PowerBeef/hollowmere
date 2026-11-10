@@ -55,8 +55,8 @@ def hole_check(name, image=None):
     return flood(247) + ["run 24", "snap"] + flood(225) + ["run 24", f"cmp {name}" + (f" {image}" if image else "")]
 
 
-def views_of(level):
-    """[(number, x, y, heading)] for a level index."""
+def standable(level):
+    """A function (x, y) -> can the player stand there, for a level index."""
     mod = importlib.import_module(LEVELS[level])
     models = {n: fn() for n, fn in furniture.MODELS.items()}
     ids = dict(wall=audit.Any(), flat=audit.Any(), ptex=audit.Any(), model={k: 0 for k in models}, thing=audit.Any())
@@ -68,9 +68,17 @@ def views_of(level):
         if not (0 <= cx < L.W and 0 <= cy < L.H) or L.cell[cy][cx] == ' ' or L.cell[cy][cx] in void:
             return False
         return not any(x0 - R < x < x1 + R and y0 - R < y < y1 + R for (x0, y0, x1, y1) in L.boxes)
+    free.size = (L.W, L.H)
+    return free
+
+
+def views_of(level):
+    """[(number, x, y, heading)] for a level index."""
+    free = standable(level)
+    W, H = free.size
     out = []
-    for cy in range(L.H):
-        for cx in range(L.W):
+    for cy in range(H):
+        for cx in range(W):
             for k, (ox, oy) in enumerate([(0.5, 0.5), (0.23, 0.23), (0.77, 0.77), (0.23, 0.77), (0.77, 0.23)]):
                 x, y = cx + ox, cy + oy
                 if not free(x, y):

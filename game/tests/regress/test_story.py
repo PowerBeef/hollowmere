@@ -112,3 +112,10 @@ def test_one_thread_per_interaction(t):
     v = t.run(L).values()
     n = sum(1 for a, e in zip(v[0:16:2], v[1:16:2]) if a and e == ev)
     t.check(n == 1, f"{n} threads run the clock's script")
+
+
+def test_playthrough_with_a_death_in_every_chapter(t):
+    """The whole game can be finished when the player is caught once at the
+    start of each chapter."""
+    import playtest
+    t.run(playtest.script(t.out, deaths=True))

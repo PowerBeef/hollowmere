@@ -2,21 +2,26 @@
 # SPDX-License-Identifier: MIT
 """Plays Hollowmere's critical path from power-on to the ending with debug
 teleports and A presses, checking progress at every stage (level, keys,
-fuses), and takes screenshots along the way: playtest.py OUTDIR
-Exits 1 when a stage is not reached."""
+fuses), and takes screenshots along the way: playtest.py OUTDIR [--deaths]
+With --deaths the player is caught once at the start of every chapter and
+carries on from the checkpoint. Exits 1 when a stage is not reached."""
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'engine', 'tools'))
 import paths  # noqa: E402
 import harness  # noqa: E402
-from hm import LEVEL, KEYS, FUSES, PLACED, act, state, teleport as tp, dismiss as quiet  # noqa: E402
+from hm import LEVEL, KEYS, FUSES, PLACED, act, state, die, teleport as tp, dismiss as quiet  # noqa: E402
 
 
-def main():
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    out = os.path.abspath(sys.argv[1])
+def script(out, deaths=False):
+    """The harness lines of the playthrough."""
     L = []
+    died = [0]
+
+    def caught(calm=True):
+        if deaths:
+            died[0] += 1
+            L.extend(die(died[0]) + (quiet() if calm else []) + ["run 120"])
 
     def shot(name):
         L.append(f"shot {out}/pt_{name}.ppm")
@@ -30,6 +35,7 @@ def main():
 
     L += harness.boot() + quiet()
     want('I start', 0, 0); shot('l1_start')
+    caught()
     # ---------------- Chapter I: the house
     L += tp(8.5, 0.7, 270) + act(60); shot('l1_cellar_locked')
     L += ["run 400"]; shot('l1_lure')                       # the library door creaks open
@@ -41,6 +47,7 @@ def main():
     # ---------------- Chapter II: the cellars
     L += ["run 240"] + quiet()
     want('II start', 1, 0, 0, 0); shot('l2_start')
+    caught()
     L += tp(2.9, 3.35, 270) + act(40)            # fuse on the wine-cellar table
     L += tp(3.35, 7.0, 180) + act(40)            # boiler key on the laundry table
     L += tp(8.45, 2.5, 0) + act(80)              # unlock the boiler room
@@ -58,6 +65,7 @@ def main():
     # ---------------- Chapter III: the wards
     L += ["run 240"] + quiet()
     want('III start', 2, 0); shot('l3_start')
+    caught()
     L += tp(2.25, 7.35, 90) + act(40)            # suite key on the nursery stool
     L += tp(10.5, 4.45, 90) + act(80)            # unlock the doctor's suite
     shot('l3_suite')
@@ -67,13 +75,21 @@ def main():
     # ---------------- Chapter IV: the chapel
     L += ["run 240"]
     want('IV start', 3, 0); shot('l4_start')
+    caught(calm=False)                           # (she is at her prayers again)
     L += act(10, 'SELECT')                       # light off
     L += tp(10.6, 2.25, 270) + ["run 20"]; shot('l4_behind')
     L += act(400)
     L += state('IV lantern') + ["expect8 {g_gameSignal} == 3 the ending was not reached"]
     shot('l4_end')
+    return L
 
-    r = harness.run(L, out, 'playtest', ok=(0, 1))
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    if len(args) != 1:
+        sys.exit(__doc__)
+    out = os.path.abspath(args[0])
+    r = harness.run(script(out, '--deaths' in sys.argv), out, 'playtest', ok=(0, 1))
     for tag, v in r.sections():
         if len(v) >= 5:
             print(f"{tag:14s} level={v[0]} keys={v[1]:#x} fuses={v[2]} placed={v[3]} signal={v[4]}")
