@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1
+
+- The portraits on the walls no longer have a black blob over the bottom of their frames: the sitter's dark coat was painted past the edge of the canvas (it was so in v1.0 too).
+- The ending credits name the game's director, PowerBeef.
+
+Because all textures share one palette, the portrait's change moved a few palette entries, so the ROM differs from v1.1 in more bytes than these two changes suggest. Saves are compatible.
+
 ## v1.1
 
 The remediation of an audit of v1.0: 59 findings, from a chapter that could not be finished after a death to a test suite that could not fail. Saves from v1.0 still work (the game continues at the start of the chapter the save had reached).

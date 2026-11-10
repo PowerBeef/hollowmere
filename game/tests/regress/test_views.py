@@ -231,3 +231,18 @@ def test_half_resolution_keeps_the_odd_column(t):
         a, b = t.image(f"half{i}.ppm").load(), t.image(f"empty{i}.ppm").load()
         n = sum(1 for y in rows if a[col, y] != b[col, y])
         t.check(n >= least, f"at {pose}: column {col} has {n} pixels of the furniture, expected {least} or more")
+
+
+def test_paintings_stay_inside_their_frames(t):
+    """The portrait's sitter was painted over the bottom edge of its gilt
+    frame: a black blob on the frame of every portrait in the house. The
+    frame of each framed texture must be the frame painting() drew."""
+    import numpy as np
+    import proptex
+    blank, _ = proptex.painting(1, [[0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    frame = np.ones(blank.shape[:2], bool)
+    frame[6:-6, 6:-6] = False                   # (the canvas is inside a 6-texel frame)
+    for name in ('portrait', 'landscape', 'mirror'):
+        painted = np.abs(proptex.TEXTURES[name]() - blank).sum(2) > 1e-6
+        n = int(painted[frame].sum())
+        t.check(n == 0, f"the {name}'s picture covers {n} texels of its frame")

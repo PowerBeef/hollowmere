@@ -35,6 +35,7 @@ ENDING_TRUE = ("Years later, after Thomas married and moved west, he mailed me a
                "On the back he had written: 'She hums a song in her sleep. We never taught it to her.'")
 
 CREDITS = ("HOLLOWMERE\n\n\nA horror game for the Game Boy Advance\n\n\n"
+           "Directed by\n\nPowerBeef\n\n\n"
            "Design, programming, art, sound,\nmusic and story\n\nClaude\n(Anthropic)\n\n\n"
            "Engine\nThin-wall raycaster with see-through\ndoorways, textured 3D furniture,\n"
            "per-room materials, dynamic lighting,\nstereo positional audio and hardware\n"

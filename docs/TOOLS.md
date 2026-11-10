@@ -90,7 +90,7 @@ One command is taken per logic update: leave eight frames between two. `sweep.py
 | selftest | `selftest.py OUT` | the harness itself fails when it should: exit 1, 2 and 3 on scripts and ROMs that are wrong on purpose |
 | boot | `bootcheck.py OUT` | the release ROM boots, draws frames, survives a minute of random input with no emulator error and carries no test symbol |
 | playthrough | `tests/playtest.py OUT [--deaths]` | Hollowmere from power-on to the ending, asserting level, keys and fuses at every stage of the critical path; `--deaths` dies once in every chapter |
-| regress | `regress.py OUT [name ...]` | the game's `tests/regress/test_*.py`: one test per bug fixed (Hollowmere: 38) |
+| regress | `regress.py OUT [name ...]` | the game's `tests/regress/test_*.py`: one test per bug fixed (Hollowmere: 39) |
 | sweep | `sweep.py OUT [--every N] [--level L]` | no pixel of the 3D view is left undrawn, from every place the player can stand: 20,368 views at three detail levels (`--quick`: every 12th) |
 | fps | `fps.py OUT [--turn] [--min FPS]` | the game's benchmark views (`tests/views.py`) hold its `MIN_FPS` |
 | stack | `stackcheck.py OUT [--min BYTES]` | at least 256 bytes of the main stack are never touched (a canary painted at boot) |

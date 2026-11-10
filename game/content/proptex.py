@@ -425,12 +425,17 @@ def painting(seed, palette):
 @tex('portrait')
 def portrait(seed=221):
     img, rng = painting(seed, [[0.08, 0.06, 0.05], [0.18, 0.12, 0.08], [0, 0, 0]])
+    # the sitter is painted on the canvas, inside the frame (the coat's
+    # ellipse runs lower than the picture and used to cover the frame's
+    # bottom edge)
+    canvas = np.zeros((S, S))
+    canvas[6:S - 6, 6:S - 6] = 1
     # a pale face and dark coat, eyes that follow you
-    img = lerp(img, np.array([0.58, 0.46, 0.36]), ellipse(S, S, 24, 32, 9, 7))
-    img = lerp(img, np.array([0.06, 0.05, 0.05]), ellipse(S, S, 50, 32, 14, 16) * (np.arange(S)[:, None] > 34))
+    img = lerp(img, np.array([0.58, 0.46, 0.36]), ellipse(S, S, 24, 32, 9, 7) * canvas)
+    img = lerp(img, np.array([0.06, 0.05, 0.05]), ellipse(S, S, 50, 32, 14, 16) * (np.arange(S)[:, None] > 34) * canvas)
     for x in (29, 35):
         img[23, x] = [0.05, 0.03, 0.03]
-    img = lerp(img, np.array([0.30, 0.22, 0.18]), ellipse(S, S, 15, 32, 6, 8) * 0.8)     # hair
+    img = lerp(img, np.array([0.30, 0.22, 0.18]), ellipse(S, S, 15, 32, 6, 8) * 0.8 * canvas)     # hair
     return np.clip(img, 0, 1)
 
 

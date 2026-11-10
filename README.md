@@ -8,7 +8,7 @@
 
 Full-resolution textured 3D at 20 fps on a 16.78 MHz ARM7, in C and hand-written ARM assembly.
 
-[**Download Hollowmere v1.1**](https://github.com/PowerBeef/hollowmere/releases/latest) · [What's new](CHANGELOG.md) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
+[**Download Hollowmere v1.1.1**](https://github.com/PowerBeef/hollowmere/releases/latest) · [What's new](CHANGELOG.md) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
 
 <img src="docs/media/walk.gif" width="720" alt="Walking through the hall of Hollowmere">
 
@@ -64,7 +64,7 @@ Explore the manor floor by floor, piece together what happened from the notes le
 
 ### Play it
 
-Download `Hollowmere-v1.1.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
+Download `Hollowmere-v1.1.1.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
 
 | Button | Action |
 |---|---|
@@ -83,7 +83,7 @@ A save from v1.0 still works: the game continues at the start of the chapter it 
 
 ## What's new in v1.1
 
-v1.1 is the result of a full audit of v1.0 and the repair of everything it found: 59 findings, from a chapter that could not be finished after a death to a test suite that could not fail. The whole list is in the [changelog](CHANGELOG.md). In short:
+v1.1 is the result of a full audit of v1.0 and the repair of everything it found: 59 findings, from a chapter that could not be finished after a death to a test suite that could not fail. The whole list is in the [changelog](CHANGELOG.md). (v1.1.1 adds one fix to a portrait's frame and a credit.) In short:
 
 **The game**
 - Chapter IV can be finished after dying in it, and a checkpoint now keeps the scripts that were running when it was taken
@@ -174,7 +174,7 @@ A headless [mGBA](https://mgba.io) harness scripts input, reads and writes memor
 | | |
 |---|---|
 | Playthrough | the whole game from power-on to the ending, asserting progress at every stage, also with a death in every chapter |
-| Regression tests | 38, one per bug fixed; 36 of them fail on v1.0 |
+| Regression tests | 39, one per bug fixed; 37 of them fail on v1.0 |
 | View sweep | every place the player can stand, 20,368 views at three detail levels: no pixel left undrawn |
 | Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside, a real v1.0 save): each must end in a running game |
 | Content limits | 47 kinds of bad content (a 41st door, a 129th vertex, a wall standing free...) each refused by the asset tools in one line |
@@ -201,8 +201,8 @@ make assets   # generate gen/ from game/content (about two minutes the first tim
 make          # build hollowmere.gba
 ```
 
-The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.1 produces a ROM with SHA-256
-`792b0c6cab5545d648aa85ae23b0cacc8f746e633c19ac1f64942c47e005bcde`.
+The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.1.1 produces a ROM with SHA-256
+`2ee4c4babf9afb967d000034c6f77e498f23c3495aaff8eb7114cb7024e938dc`.
 
 To run the tests as well, install `libmgba-dev`:
 

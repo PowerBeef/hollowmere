@@ -4,7 +4,7 @@
 #define GAME_H
 #include "game_api.h"       // the engine's side: SaveState, Thing, scripts, save, the frame loop, the hooks defined in game.c
 
-#define GAME_VERSION "v1.1"         // on the title screen
+#define GAME_VERSION "v1.1.1"         // on the title screen
 #define SAVE_MAGIC 0x484C5733u      // "HLW3"
 
 extern SaveState g_checkpoint;
