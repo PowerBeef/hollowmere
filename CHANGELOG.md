@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2
+
+The Night Sister moves. She had walk and run cycles and four still poses; the stills are now animations: 360 pre-rendered frames where there were 155.
+
+- **She breathes.** Standing on her rounds she was one frozen picture; she now plays a six-picture loop, her shoulders and lantern rising and settling.
+- **She looks for you.** Searching a room she turns her shoulders, head and lantern from side to side over eight pictures instead of holding one pose.
+- **She prays, and gets up.** Kneeling in the chapel she rocks slowly. When she stirs she takes up her lantern and rises through six pictures, then kneels again through the same six; she used to snap between kneeling and standing.
+- **She opens doors by hand.** Her free hand goes out to a door as it swings, four pictures in step with the door, where she used to stand and wait in front of it.
+- **The lunge that ends a chase has eight pictures** over its second and a half, not three.
+
+For people building on the engine: re-rendering part of her sheet (`make.py --only door`) no longer unpacks the whole sheet once per frame, which had come to need more memory than most machines have.
+
+Nothing else changes: her behaviour, the levels and the saves are those of v1.1.1. The ROM grows from 14.8 to 17.2 MB of the cartridge's 32.
+
 ## v1.1.1
 
 - The portraits on the walls no longer have a black blob over the bottom of their frames: the sitter's dark coat was painted past the edge of the canvas (it was so in v1.0 too).

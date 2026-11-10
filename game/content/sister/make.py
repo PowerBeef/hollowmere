@@ -7,10 +7,12 @@
 Frames (the engine's CRF_* layout follows this order):
   walk   8 views x 8 phases     112 x 224
   chase  8 views x 8 phases     160 x 224
-  idle   8 views                112 x 224
-  search 8 views                112 x 224
-  kneel  8 views                112 x 224
-  attack 3 frames, seen from 0.75 tiles away, 160 x 224
+  idle   8 views x 6 phases     112 x 224    breathing
+  search 8 views x 8 phases     112 x 224    turning from side to side with the lantern
+  kneel  8 views x 4 phases     112 x 224    rocking at prayer
+  rise   8 views x 6 frames     112 x 224    getting up from prayer (played backwards to kneel again)
+  door   8 views x 4 frames     160 x 224    pushing a door open
+  attack 8 frames, seen from 0.75 tiles away, 160 x 224
 Views are 45 degrees apart, clockwise (seen from above) from straight in
 front of her. Needs numba."""
 import os, sys, time
@@ -23,6 +25,8 @@ from view import shoot, sheet, TILE, PLANE_H, SPR_H
 OUT = os.path.join(HERE, '..', '..', 'assets', 'sister.npz')
 WIDE = 160
 VIEWS = 8
+# frames per view of the kinds drawn standing in one place (game/src/creature.c has the same numbers)
+PHASES = dict(idle=6, search=8, kneel=4, rise=anim.RISE_FRAMES, door=anim.DOOR_FRAMES)
 
 
 def frame_list():
@@ -33,10 +37,11 @@ def frame_list():
     for v in range(VIEWS):
         for k in range(8):
             L.append(('chase', v, k))
-    for kind in ('idle', 'search', 'kneel'):
+    for kind, n in PHASES.items():
         for v in range(VIEWS):
-            L.append((kind, v, 0))
-    for k in range(3):
+            for k in range(n):
+                L.append((kind, v, k))
+    for k in range(anim.ATTACK_FRAMES):
         L.append(('attack', 0, k))
     return L
 
@@ -47,12 +52,12 @@ def render_one(kind, v, k, ss):
         return shoot(anim.walk(k / 8), view, ss=ss)
     if kind == 'chase':
         return shoot(anim.chase(k / 8), view, ss=ss, W=WIDE, plane_w=PLANE_H * WIDE / SPR_H)
-    if kind == 'idle':
-        return shoot(anim.idle(), view, ss=ss)
-    if kind == 'search':
-        return shoot(anim.search(), view, ss=ss)
-    if kind == 'kneel':
-        return shoot(anim.kneel(), view, ss=ss)
+    if kind in ('idle', 'search', 'kneel'):
+        return shoot(getattr(anim, kind)(k / PHASES[kind]), view, ss=ss)
+    if kind == 'rise':
+        return shoot(anim.rise(k), view, ss=ss)
+    if kind == 'door':
+        return shoot(anim.door(k), view, ss=ss, W=WIDE, plane_w=PLANE_H * WIDE / SPR_H)
     if kind == 'attack':
         return shoot(anim.attack(k), 0.0, dist=0.75 * TILE, ss=ss, W=WIDE, plane_w=PLANE_H * WIDE / SPR_H)
 
@@ -65,8 +70,9 @@ def main():
     old = {}
     if only and os.path.exists(OUT):
         z = np.load(OUT, allow_pickle=True)
+        rgb0, alpha0, em0, w0 = z['rgb'], z['alpha'], z['em'], z['widths']      # (each access unpacks the whole array: once)
         for i, n in enumerate(z['names']):
-            old[str(n)] = (z['rgb'][i], z['alpha'][i], z['em'][i])
+            old[str(n)] = (rgb0[i, :, :w0[i]], alpha0[i, :, :w0[i]], em0[i, :, :w0[i]])
     names, rgbs, alphas, ems = [], [], [], []
     t0 = time.time()
     for n, (kind, v, k) in enumerate(frames):
@@ -84,7 +90,7 @@ def main():
         R = np.zeros((SPR_H, WIDE, 3), np.uint8); A = np.zeros((SPR_H, WIDE), np.uint8); E = np.zeros((SPR_H, WIDE), np.uint8)
         R[:, :W] = rgb8; A[:, :W] = a8; E[:, :W] = e8
         names.append(name); rgbs.append(R); alphas.append(A); ems.append(E)
-    widths = np.array([WIDE if n.startswith(('chase', 'attack')) else 112 for n in names])
+    widths = np.array([WIDE if n.startswith(('chase', 'door', 'attack')) else 112 for n in names])
     np.savez_compressed(OUT, names=np.array(names), rgb=np.stack(rgbs), alpha=np.stack(alphas), em=np.stack(ems),
                         widths=widths)
     print('wrote', OUT, f'{time.time() - t0:.0f}s')

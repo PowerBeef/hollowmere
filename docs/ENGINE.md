@@ -64,7 +64,7 @@ Three fill paths share the wall fillers' column-pair machinery:
 
 Every column is tested against the wall depth and the lintel clip rows, so furniture disappears correctly behind door frames and through arches. Faces that span a wall in depth (a staircase seen end-on) are culled column by column.
 
-**Sprites** (items, decor and an enemy) are depth-sorted together with the props; one that stands on a prop (a note on a table) is drawn after it. The Sister is pre-rendered offline from a 3D rig: 8 viewing angles, walk and chase cycles of 8 phases, idle, search, kneel and attack frames, each at four sizes so her texels stay about one per pixel.
+**Sprites** (items, decor and an enemy) are depth-sorted together with the props; one that stands on a prop (a note on a table) is drawn after it. The Sister is pre-rendered offline from a 3D rig: 8 viewing angles, walk and chase cycles of 8 phases, loops for standing, searching and kneeling, short sequences for getting up, pushing a door and the lunge (360 frames, 4.2 MB), each at four sizes so her texels stay about one per pixel.
 
 ## Memory
 
@@ -75,7 +75,7 @@ Every column is tested against the wall depth and the lintel clip rows, so furni
 | EWRAM (256 KB) | level state, props, sprites, light grids, script threads, the 2D canvas |
 | ROM | textures in their seven layouts, models, sprites, sounds, levels, text |
 
-The ROM is spent on speed: about 10 MB of the 14.8 MB cartridge is pre-arranged wall texture data.
+The ROM is spent on speed: about 10 MB of the 17.2 MB cartridge is pre-arranged wall texture data.
 
 The renderer's tables in video memory are placed by hand in `gba.ld`. The script is run through the C preprocessor with `limits.h`, and asserts that each table still fits when a limit (vertices per model, voices, view width) is raised.
 

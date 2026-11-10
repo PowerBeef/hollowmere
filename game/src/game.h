@@ -4,7 +4,7 @@
 #define GAME_H
 #include "game_api.h"       // the engine's side: SaveState, Thing, scripts, save, the frame loop, the hooks defined in game.c
 
-#define GAME_VERSION "v1.1.1"         // on the title screen
+#define GAME_VERSION "v1.2"         // on the title screen
 #define SAVE_MAGIC 0x484C5733u      // "HLW3"
 
 extern SaveState g_checkpoint;
@@ -74,7 +74,9 @@ typedef struct {
     s16 scriptIdx;
     s32 prayX, prayY;
     u16 prayAngle;
+    u8  doorPush;      // 1 + how far the door she is pushing has opened, in quarters (0: not at a door)
 } Creature;
+extern u16 g_crFrame;       // the frame of her sprite sheets drawn last (creature_sprite)
 extern Creature g_cr;
 extern s16 g_fear;          // 0..256
 

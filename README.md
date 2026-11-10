@@ -8,7 +8,7 @@
 
 Full-resolution textured 3D at 20 fps on a 16.78 MHz ARM7, in C and hand-written ARM assembly.
 
-[**Download Hollowmere v1.1.1**](https://github.com/PowerBeef/hollowmere/releases/latest) · [What's new](CHANGELOG.md) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
+[**Download Hollowmere v1.2**](https://github.com/PowerBeef/hollowmere/releases/latest) · [What's new](CHANGELOG.md) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
 
 <img src="docs/media/walk.gif" width="720" alt="Walking through the hall of Hollowmere">
 
@@ -19,6 +19,7 @@ Full-resolution textured 3D at 20 fps on a 16.78 MHz ARM7, in C and hand-written
 ## Contents
 
 - [Hollowmere, the game](#hollowmere-the-game): what it is, how to play it
+- [What's new in v1.2](#whats-new-in-v12)
 - [What's new in v1.1](#whats-new-in-v11)
 - [The engine](#the-engine): what it does and how
 - [Make your own game](#make-your-own-game): the interface and a 180-line example
@@ -64,7 +65,7 @@ Explore the manor floor by floor, piece together what happened from the notes le
 
 ### Play it
 
-Download `Hollowmere-v1.1.1.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
+Download `Hollowmere-v1.2.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
 
 | Button | Action |
 |---|---|
@@ -80,6 +81,19 @@ An alternative layout (B for the light, R to run, SELECT for the map) is in the 
 A save from v1.0 still works: the game continues at the start of the chapter it had reached, with the notes found so far.
 
 ---
+
+## What's new in v1.2
+
+The Night Sister moves. Her four still poses are now animations (360 pre-rendered frames where there were 155):
+
+- She breathes while she stands, and turns her head, shoulders and lantern from side to side while she searches
+- At prayer she rocks; when she stirs she takes up her lantern and rises, and kneels again the same way
+- Her free hand goes out to a door she opens, in step with the door
+- The lunge that ends a chase plays eight pictures, not three
+
+<img src="docs/media/sister-v1.2.png" width="720" alt="Frames of the Night Sister searching, rising from prayer, opening a door and lunging">
+
+Her behaviour, the levels and the saves are unchanged.
 
 ## What's new in v1.1
 
@@ -130,7 +144,7 @@ The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-
 
 **Tricks worth stealing**
 - Renderer tables live in the parts of video memory the letterbox hides: the off-screen rows of both frame buffers hold the depth buffer, colormaps and projection scratch, read as fast as internal RAM
-- The ROM is spent on speed: about 10 MB of the 14.8 MB cartridge is pre-arranged texture data
+- The ROM is spent on speed: about 10 MB of the 17.2 MB cartridge is pre-arranged texture data
 - A fixed 842,688-cycle budget per frame (3 vblanks), measured on every frame, interrupts included; work that would cost a frame several (light tables, text, path searches) is spread over ticks
 
 **Content pipeline** — the whole game is generated from Python: floor plans written in code, low-poly models built from boxes, prisms and lofts, procedural textures, synthesized sounds and music, and level scripts compiled to bytecode.
@@ -174,7 +188,7 @@ A headless [mGBA](https://mgba.io) harness scripts input, reads and writes memor
 | | |
 |---|---|
 | Playthrough | the whole game from power-on to the ending, asserting progress at every stage, also with a death in every chapter |
-| Regression tests | 39, one per bug fixed; 37 of them fail on v1.0 |
+| Regression tests | 43: one per bug fixed (39, of which 37 fail on v1.0) and four for the Night Sister's animations |
 | View sweep | every place the player can stand, 20,368 views at three detail levels: no pixel left undrawn |
 | Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside, a real v1.0 save): each must end in a running game |
 | Content limits | 47 kinds of bad content (a 41st door, a 129th vertex, a wall standing free...) each refused by the asset tools in one line |
@@ -201,8 +215,8 @@ make assets   # generate gen/ from game/content (about two minutes the first tim
 make          # build hollowmere.gba
 ```
 
-The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.1.1 produces a ROM with SHA-256
-`2ee4c4babf9afb967d000034c6f77e498f23c3495aaff8eb7114cb7024e938dc`.
+The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.2 produces a ROM with SHA-256
+`120a7e71e8656f739733f0ab8a00c53024b02b5b2a0c242be669c3aecabec682`.
 
 To run the tests as well, install `libmgba-dev`:
 

@@ -362,6 +362,7 @@ void creature_light(void) {
 }
 
 // ------------------------------------------------------------- movement
+#define CR_DOOR_FRAMES 4        // pictures of her pushing a door (CR_DOOR_N below must agree)
 static int move_toward_goal(s32 speed) {
     int c = cell_of(g_cr.x, g_cr.y);
     int goalCell = cell_of(g_cr.goalX, g_cr.goalY);
@@ -401,6 +402,7 @@ static int move_toward_goal(s32 speed) {
                     snd_play3d(SND_DOOR_OPEN, mx, my, 200, 3300, 130);
                 }
                 g_cr.moving = 0;
+                g_cr.doorPush = 1 + d->open * CR_DOOR_FRAMES / 0xC000;      // her hand on it as it swings: reach, push, lean, let go
                 face_toward(((n & 31) << 16) + 0x8000 - g_cr.x, ((n >> 5) << 16) + 0x8000 - g_cr.y, 1200);
                 return 0;
             }
@@ -466,6 +468,7 @@ void creature_update(void) {
         return;
     }
     g_cr.dist = dist_approx(g_cr.x - p->x, g_cr.y - p->y);
+    g_cr.doorPush = 0;          // (set again below while she stands at a door she is opening)
     if (g_cr.state == CR_KILL) { g_cr.moving = 0; return; }
 
     // perception -> alert (a script holding the player still for a scene
@@ -617,8 +620,19 @@ void creature_update(void) {
 // her texels stay about one per pixel (see game/content/sister).
 #define CR_WORLD_H  351            // 1.37 tiles
 #define CR_WORLD_W  175            // 112 texels wide
-#define CR_WORLD_WW 251            // 160 texels wide (chase, attack)
+#define CR_WORLD_WW 251            // 160 texels wide (chase, door, attack)
 #define CR_LIGHT_FLOOR 20
+// pictures per view of each kind (game/content/sister/make.py renders them: PHASES there)
+#define CR_IDLE_N   6
+#define CR_SEARCH_N 8
+#define CR_KNEEL_N  4
+#define CR_RISE_N   6
+#define CR_DOOR_N   CR_DOOR_FRAMES
+#define CR_ATTACK_N 8
+_Static_assert(CRF_SEARCH - CRF_IDLE == 8 * CR_IDLE_N && CRF_KNEEL - CRF_SEARCH == 8 * CR_SEARCH_N && CRF_RISE - CRF_KNEEL == 8 * CR_KNEEL_N &&
+               CRF_DOOR - CRF_RISE == 8 * CR_RISE_N && CRF_ATTACK - CRF_DOOR == 8 * CR_DOOR_N && CR_NFRAMES - CRF_ATTACK == CR_ATTACK_N,
+               "the Sister's sprite sheets (game/assets/sister.npz) and the frame counts here disagree");
+u16 g_crFrame;
 int creature_sprite(RSprite *s) {
     if (g_cr.state == CR_OFF) return 0;
     s->x = g_cr.x; s->y = g_cr.y;
@@ -632,12 +646,25 @@ int creature_sprite(RSprite *s) {
     int view = (u16)(diff + 4096) >> 13;
     int f;
     if (g_cr.state == CR_KILL) {
-        f = CRF_ATTACK + (g_cr.frame < 9 ? 0 : g_cr.frame < 19 ? 1 : 2);
+        // the lunge: 30 frames of the death scene (main.c) over its 8 pictures
+        int k = g_cr.frame * CR_ATTACK_N / 30;
+        f = CRF_ATTACK + (k < CR_ATTACK_N ? k : CR_ATTACK_N - 1);
         s->worldW = CR_WORLD_WW;
     } else if (g_cr.state == CR_PRAY && !g_cr.prayTurn) {
-        f = CRF_KNEEL + view;
+        f = CRF_KNEEL + view * CR_KNEEL_N + (g_frame / 28) % CR_KNEEL_N;         // rocking, a little under two seconds a round
+    } else if (g_cr.state == CR_PRAY && (170 - g_cr.timer < CR_RISE_N * 6 || g_cr.timer < CR_RISE_N * 6)) {
+        // getting up when she stirs (the first 36 ticks of her 170 on her
+        // feet), and down on her knees again over the last 36
+        int k = 170 - g_cr.timer < CR_RISE_N * 6 ? (170 - g_cr.timer) / 6 : g_cr.timer / 6;
+        f = CRF_RISE + view * CR_RISE_N + (k < 0 ? 0 : k);
+    } else if (g_cr.doorPush) {
+        f = CRF_DOOR + view * CR_DOOR_N + (g_cr.doorPush - 1);                   // her free hand on the door she is opening
+        s->worldW = CR_WORLD_WW;
     } else if (!g_cr.moving) {
-        f = (g_cr.state == CR_INVESTIGATE || g_cr.state == CR_SEARCH ? CRF_SEARCH : CRF_IDLE) + view;
+        if (g_cr.state == CR_INVESTIGATE || g_cr.state == CR_SEARCH)
+            f = CRF_SEARCH + view * CR_SEARCH_N + (g_frame / 18) % CR_SEARCH_N;  // turning with the lantern, a round in 2.4 s
+        else
+            f = CRF_IDLE + view * CR_IDLE_N + (g_frame / 16) % CR_IDLE_N;        // a breath in 1.6 s
     } else if (g_cr.state == CR_CHASE) {
         f = CRF_CHASE + view * 8 + ((g_cr.anim >> 13) & 7);           // a tile a stride pair
         s->worldW = CR_WORLD_WW;
@@ -647,6 +674,7 @@ int creature_sprite(RSprite *s) {
     // size: about one texel per pixel at this distance
     s32 d = dist_approx(g_cr.x - g_cam.x, g_cr.y - g_cam.y);
     int lv = d < 0x17800 ? 0 : d < 0x2F000 ? 1 : d < 0x5E000 ? 2 : 3;
+    g_crFrame = f;
     s->img = creature_frames[lv][f];
     return 1;
 }

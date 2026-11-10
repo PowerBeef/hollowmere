@@ -24,4 +24,4 @@ DOOR_MODELS = dict(single='leaf_single', half='leaf_half')
 # when the shared palette is chosen.
 ENEMY_SHEETS = dict(file='sister.npz',
                     palette_frames=['walk_0_0', 'walk_2_2', 'walk_4_4', 'walk_6_6', 'chase_0_3', 'idle_1_0',
-                                    'search_0_0', 'kneel_4_0', 'attack_0_2'])
+                                    'search_0_0', 'kneel_4_0', 'attack_0_7'])
