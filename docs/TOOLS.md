@@ -21,6 +21,8 @@ pip install -r requirements-optional.txt  # Numba, only to regenerate game/asset
 
 **Reproducing the release.** With exactly these versions a clean build gives the release ROM byte for byte: its SHA-256 is in the README and in `game/release.sha256`. Other compiler or library versions build a ROM that plays the same but may differ in bytes (a texture or a sound rounded differently). The GitHub workflow (`.github/workflows/check.yml`) builds from a clean checkout twice and compares the two ROMs, compares a tagged release with the recorded hash, runs the checks below and builds and boots `examples/minimal`.
 
+**Cutting a release.** Set `GAME_VERSION` in `game/src/game.h`, record the ROM's hash in `game/release.sha256`, write `docs/releases/<version>.md` and push to `main`. `.github/workflows/release.yml` then builds the ROM from a clean checkout, stops unless it is byte for byte the recorded one, and publishes the release with the ROM attached.
+
 ## Building
 
 ```sh

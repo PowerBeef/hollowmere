@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+# Cuts a release when main carries a version that has none yet.
+#
+# To release: set GAME_VERSION in game/src/game.h, record the ROM's hash in
+# game/release.sha256 (sha256sum hollowmere.gba), write docs/releases/<version>.md
+# and push to main. This workflow then builds the ROM from a clean checkout,
+# refuses to go on unless it is byte for byte the recorded one, and publishes
+# the release (tag included) with the ROM attached.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04           # the toolchain versions of docs/TOOLS.md
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which version is this, and is it released already?
+        id: version
+        run: |
+          v=$(sed -n 's/^#define GAME_VERSION "\(v[0-9][0-9.]*\)".*/\1/p' game/src/game.h)
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "$v" > /dev/null 2>&1; then
+            echo "$v is already released: nothing to do"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            test -f "docs/releases/$v.md"
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.version.outputs.new == 'true'
+        with:
+          python-version: '3.13'
+
+      - name: Build the ROM from nothing
+        if: steps.version.outputs.new == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi zip
+          python3 -m pip install -r requirements.txt
+          make assets
+          make
+
+      - name: It must be the recorded ROM, byte for byte
+        if: steps.version.outputs.new == 'true'
+        run: sha256sum -c game/release.sha256
+
+      - name: Publish
+        if: steps.version.outputs.new == 'true'
+        run: |
+          v=${{ steps.version.outputs.version }}
+          cp hollowmere.gba Hollowmere.gba
+          zip -X "Hollowmere-$v.zip" Hollowmere.gba
+          gh release create "$v" --target "$GITHUB_SHA" --title "Hollowmere $v" --notes-file "docs/releases/$v.md" \
+            "Hollowmere-$v.zip" Hollowmere.gba
