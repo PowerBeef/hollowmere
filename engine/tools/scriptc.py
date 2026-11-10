@@ -8,16 +8,15 @@ from limits import ContentError, check, in_range
 
 OPS = ['end', 'wait', 'sound', 'sound3d', 'msg', 'objective', 'door', 'light', 'creature', 'shake',
        'flash', 'flag', 'ifnot_flag', 'if_flag', 'jmp', 'give', 'checkpoint', 'endlevel', 'fear',
-       'blackout', 'music', 'musicstop', 'ambience', 'thing', 'ending', 'inter', 'ifnot_key', 'fade',
+       'blackout', 'music', 'musicstop', 'ambience', 'thing', 'ending', 'ifnot_key', 'fade',
        'teleport', 'if_fuses_lt', 'prop', 'freeze', 'lookat', 'note', 'start', 'placefuses',
-       'stopsounds', 'jrand', 'chapter', 'hudoff', 'if_key']
+       'stopsounds', 'jrand', 'hudoff', 'if_key']        # (the same list, in the same order, as the enum in engine/src/script.c)
 OPC = {n: i for i, n in enumerate(OPS)}
 
 CREATURE_OPS = {'despawn': 0, 'spawn': 1, 'script': 2, 'goto': 3, 'mode': 4, 'chase': 5, 'pray': 6,
                 'hear': 7, 'face': 8}
 DOOR_OPS = {'close': 0, 'open': 1, 'lock': 2, 'unlock': 3, 'slam': 4}
 GIVE_KINDS = {'key': 0, 'fuse': 1, 'battery': 2, 'takekey': 3}
-MUSIC = {'lullaby': 0, 'fragment': 1, 'ending': 2}
 DIRS = {'E': 0, 'S': 1, 'W': 2, 'N': 3}
 
 
@@ -46,6 +45,7 @@ class Ctx:
         self.level = level_name
 
         self.where = level_name
+        self.music = {}         # tune name -> number (the game's manifest)
 
     def snd(self, n):
         check(n in self.sounds, self.where, f"there is no sound {n!r}")
@@ -141,7 +141,7 @@ def _compile_action(a, ctx, code, labels, jump, where):
         if op == 'wait':
             code += word(args[0], 'the frames to wait', limits.MAX_WAIT)
         elif op == 'sound':
-            code += [ctx.snd(args[0]), byte(args[1] if len(args) > 1 else 200, 'the volume'), in_range(args[2] if len(args) > 2 else 0, -128, 127, where, f'the pan in {a!r}') & 255]
+            code += [ctx.snd(args[0]), byte(args[1] if len(args) > 1 else 200, 'the volume'), in_range(args[2] if len(args) > 2 else 0, -128, 127, where, f'the pitch shift (semitones) in {a!r}') & 255]
         elif op == 'sound3d':
             code += [ctx.snd(args[0]), cell(args[1], 'x'), cell(args[2], 'y'), byte(args[3] if len(args) > 3 else 220, 'the volume')]
         elif op == 'msg':
@@ -182,14 +182,12 @@ def _compile_action(a, ctx, code, labels, jump, where):
         elif op == 'blackout':
             code += word(args[0], 'the frames')
         elif op == 'music':
-            check(args[0] in MUSIC, where, f"there is no music {args[0]!r} (known: {', '.join(MUSIC)})")
-            code += [MUSIC[args[0]], byte(args[1] if len(args) > 1 else 200, 'the volume')]
+            check(args[0] in ctx.music, where, f"there is no music {args[0]!r} (the manifest's MUSIC has: {', '.join(ctx.music) or 'none'})")
+            code += [ctx.music[args[0]], byte(args[1] if len(args) > 1 else 200, 'the volume')]
         elif op == 'ambience':
             code += [ctx.snd(args[0]) if args[0] else 0, byte(args[1] if len(args) > 1 else 110, 'the volume')]
         elif op == 'thing':
             code += [ctx.thing(args[0]), 1 if args[1] else 0]
-        elif op == 'inter':
-            code += [byte(args[0], 'the first value'), byte(args[1], 'the second value')]
         elif op in ('ifnot_key', 'if_key'):
             code += [byte(args[0], 'the key', limits.MAX_KEYS - 1)]
             jump(args[1])
@@ -214,8 +212,6 @@ def _compile_action(a, ctx, code, labels, jump, where):
         elif op == 'jrand':
             code += [byte(args[0], 'the chance (out of 256)')]
             jump(args[1])
-        elif op == 'chapter':
-            code += u16(ctx.s(args[0]))
         elif op == 'hudoff':
             code += [1 if args[0] else 0]
         elif op in ('end', 'checkpoint', 'musicstop', 'ending', 'placefuses', 'stopsounds'):

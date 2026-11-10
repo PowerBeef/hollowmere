@@ -13,7 +13,6 @@
 #include "dev.h"
 #include <string.h>
 
-EWRAM_BSS SaveState g_state;
 EWRAM_BSS SaveState g_checkpoint;
 
 // The test scripts read these by offset (game/tests/hm.py): moving a field
@@ -34,14 +33,10 @@ _Static_assert(offsetof(FxState, slits) == 22, "FxState layout: update game/test
 _Static_assert(offsetof(Settings, controls) == 2, "Settings layout: update game/tests/hm.py");
 _Static_assert(sizeof(Thing) == 16 && offsetof(Thing, flags) == 10 && MAX_THINGS == 112, "Thing layout: update game/tests/hm.py");
 u8 g_hasCheckpoint;
-EWRAM_BSS Thing g_things[MAX_THINGS];
-int g_numThings;
 u8 g_gameSignal;
 u8 g_nextLevel;
 u32 g_frame;
 
-extern int g_shakeAmt, g_shakeT, g_flashT, g_blackoutT, g_fadeTarget, g_fadeSpeed, g_fadeAcc;
-extern int g_lookX, g_lookY, g_ambience;
 
 static int s_heartT;
 static u32 s_trigInside;            // triggers the player stood in last tick
@@ -53,7 +48,6 @@ static u8 s_pendingEv[8];           // events waiting for a free script thread
 volatile s32 g_debugCmd, g_debugA, g_debugB, g_debugC;
 volatile u32 g_dbgFreeze;
 EWRAM_BSS u32 g_benchOut[4];
-EWRAM_BSS u32 g_pcSamples[4097];   // the sampling profiler's buffer (crt0.s)
 EWRAM_BSS u32 g_profUpd[5], g_profParts[6];     // (the test ROM's counters stay out of the fast RAM the stack needs)
 
 #define PNOW() PROF_T()
@@ -122,44 +116,80 @@ static void debug_hook(void) {
 #endif
 
 // ------------------------------------------------------------- math
-s32 isqrt32(u32 v) {
-    u32 r = 0, b = 1u << 30;
-    while (b > v) b >>= 2;
-    while (b) {
-        if (v >= r + b) { v -= r + b; r = (r >> 1) + b; }
-        else r >>= 1;
-        b >>= 2;
+// ------------------------------------------------- the engine's hooks
+// (engine/src/game_api.h; game_render, game_checkpoint and game_state_valid
+// are further down, game_str, game_message and game_set_objective below)
+const GameInfo game_info = { SAVE_MAGIC, { 'H', 'L', 'S', '1' } };
+
+static inline s32 cellc(int c) { return (c << 16) + 0x8000; }
+
+// what the level scripts ask of the game
+void game_script(int what, int a, int b, int c) {
+    switch (what) {
+    case GSC_ENEMY:             // ('creature', ...): the Night Sister
+        switch (a) {
+        case 0: creature_despawn(); break;
+        case 1: creature_spawn(cellc(b), cellc(c), CR_PATROL); break;
+        case 2: creature_spawn(cellc(b), cellc(c), CR_SCRIPT); break;
+        case 3: creature_goto(cellc(b), cellc(c)); break;
+        case 4: g_cr.mode = b; g_state.creatureMode = b; break;
+        case 5: if (g_cr.state != CR_OFF) { g_cr.state = CR_CHASE; g_cr.alert = 256; g_cr.lostTimer = 0; } break;
+        case 6: creature_spawn(cellc(b), cellc(c), CR_PRAY); break;
+        case 7: if (g_cr.state != CR_OFF) creature_hear(cellc(b), cellc(c), 64 << 16); break;
+        case 8: g_cr.angle = g_cr.lookAngle = g_cr.prayAngle = b << 8; break;
+        }
+        break;
+    case GSC_ENDLEVEL: g_nextLevel = a; g_gameSignal = GS_EXIT; break;
+    case GSC_ENDING: g_gameSignal = GS_ENDING; break;
+    case GSC_FEAR: g_fear += a; if (g_fear > 256) g_fear = 256; break;
+    case GSC_TELEPORT:
+        g_player.x = cellc(a); g_player.y = cellc(b); g_player.angle = c << 14;
+        g_cam.x = g_player.x; g_cam.y = g_player.y; g_cam.angle = g_player.angle;
+        break;
+    case GSC_FREEZE: g_player.frozen = a; break;
     }
-    return r;
 }
 
-s32 dist_approx(s32 dx, s32 dy) {
-    if (dx < 0) dx = -dx;
-    if (dy < 0) dy = -dy;
-    if (dx < 0x1000000 && dy < 0x1000000) {
-        u32 a = dx >> 6, b = dy >> 6;
-        return isqrt32(a * a + b * b) << 6;
-    }
-    if (dx < dy) { s32 t = dx; dx = dy; dy = t; }
-    return dx + ((dy * 3) >> 3) + (dy >> 5);
+// A save written by version 1.0: one slot at the start of the save area,
+// the same fields without the script threads. Its checkpoint cannot be
+// resumed (the level scripts it would need were not saved), but the chapter
+// and what carries from chapter to chapter can: the player starts that
+// chapter again.
+#define OLD_MAGIC 0x484C5732u       // "HLW2"
+#define OLD_HEAD  offsetof(SaveState, script)
+#define OLD_SIZE  (OLD_HEAD + 12)   // + px, py, pangle, checksum
+int game_save_import(SaveState *s) {
+    EWRAM_BSS static SaveState old;     // (its fields up to the script threads are where they were)
+    SaveState *o = &old;
+    const u8 *raw = (const u8 *)o;
+    save_raw_read(0, o, OLD_SIZE);
+    u16 sum = raw[OLD_SIZE - 2] | raw[OLD_SIZE - 1] << 8;
+    if (o->magic != OLD_MAGIC || sum != save_sum16(raw, OLD_SIZE - 2) || o->level >= NUM_LEVELS) return 0;
+    memset(s, 0, sizeof *s);
+    s->level = o->level;
+    s->notesFound = o->notesFound;
+    s->battery = o->battery > 1000000 ? 1000000 : o->battery;
+    s->flashOn = 1;
+    s->deaths = o->deaths;
+    s->playFrames = o->playFrames;
+    return 1;
 }
 
-u16 angle_to(s32 dx, s32 dy) {
-    // octant-based atan2 approximation, 0..65535
-    if (dx == 0 && dy == 0) return 0;
-    s32 ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
-    while ((ax | ay) >= 0x10000) { ax >>= 1; ay >>= 1; }     // (the quotient in 32 bits; 15 good bits left)
-    s32 a;
-    if (ax >= ay) {
-        s32 t = (ay << 15) / ax;                      // tan in Q15 (0..1)
-        a = (t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15);   // atan(t)/(2pi)*65536
-    } else {
-        s32 t = (ax << 15) / ay;
-        a = 16384 - ((t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15));
-    }
-    if (dx < 0) a = 32768 - a;
-    if (dy < 0) a = 65536 - a;
-    return (u16)a;
+// the options, stored beside the save
+Settings g_settings = { 1, 3, 0, 0 };
+
+void settings_save(void) {
+    u8 b[4] = { g_settings.brightness, g_settings.volume, g_settings.controls, g_settings.seenIntro };
+    save_settings_write(b);
+}
+
+void settings_load(void) {
+    u8 b[4];
+    if (!save_settings_read(b)) return;
+    g_settings.brightness = b[0] > 2 ? 1 : b[0];
+    g_settings.volume = b[1] > 4 ? 3 : b[1];
+    g_settings.controls = b[2] > 1 ? 0 : b[2];
+    g_settings.seenIntro = b[3] & 1;
 }
 
 // ------------------------------------------------------------- strings
@@ -420,12 +450,8 @@ static void update_fx(void) {
 }
 
 void game_update(void) {
-    extern volatile u16 g_keyPressAcc;
     u16 keys = ~REG_KEYINPUT & KEY_MASK;
-    REG_IME = 0;
-    u16 pressed = g_keyPressAcc;
-    g_keyPressAcc = 0;
-    REG_IME = 1;
+    u16 pressed = engine_keys_pressed();
 #ifdef DEV
     if (g_dbgFreeze) { debug_hook(); return; }     // test harness: the world stands still
 #endif

@@ -3,18 +3,14 @@
 """Checks every string of the game against the code that draws it, and exits 1
 when one does not fit: textcheck.py
 
-  messages, signs, lock hints   hud_message: one line up to 224 px, else two
-                                halves split at the space nearest the middle,
-                                each at most 236 px and 127 characters
-  objectives, prompts           one HUD line of 236 px (objectives: 232)
-  intro and ending pages        ui_text_screen: 599 characters, 13 lines of 200 px
-  notes                         title 188 px; body in pages of 10 lines of 184 px, 9 pages
-  credits, death lines,         centred lines of 236 px, 63 characters
-  chapter cards, room names
-  key names                     inside "Took the <key>." (46) and "Unlocked: <key>." (54)
-  every string                  ASCII with a glyph for each character
+  messages and signs    hud_message: one line up to 224 px, else two halves
+                        split at the space nearest the middle, each at most
+                        236 px and 127 characters
+  objectives            one HUD line of 232 px
+  every string          ASCII with a glyph for each character
 
-The rules mirror engine/src/hud.c, engine/src/gfx.c and the game's ui.c."""
+The rules mirror engine/src/hud.c and engine/src/gfx.c. A game adds the rules
+of its own screens in tests/textrules.py: check(T), with this module as T."""
 import importlib
 import sys
 import paths
@@ -120,7 +116,10 @@ def check_page(where, s, w, max_lines, max_chars=None):
 
 
 def main():
-    fixed = dict(story.FIXED)
+    """The checks every game shares: the text of level scripts and signs as
+    the HUD draws it, and a glyph for every character of every string. Then
+    the game's own rules, if it has any: tests/textrules.py, check(T) with T
+    this module (check_msg, check_line, check_page, wrap, width, glyphs, bad)."""
     for ln in LEVELS:
         M = importlib.import_module(ln)
         for ev, acts in getattr(M, 'EVENTS', {}).items():
@@ -136,55 +135,17 @@ def main():
             if 'inter' in p and p['inter'][0] == 'sign':
                 check_msg(f"{ln} sign on {p['model']}", p['inter'][1])
         for r, d in getattr(M, 'ROOMS', {}).items():
-            # the map's heading: floor name on the left, room name on the right
-            fl = getattr(M, 'FLOOR', getattr(M, 'NAME', ''))
-            if glyphs(f"{ln} room {r}", d['name'] + fl) and width(fl) + width(d['name']) > 212:
-                bad(f"{ln} room {r}", "floor and room name collide in the map heading", d['name'])
-    for i, t in enumerate(story.LOCK_HINTS):
-        check_msg(f"lock hint {i}", t)
-    for nm, t in story.FIXED:
-        if nm.startswith('M_'):
-            check_msg(nm, t)
-        elif nm.startswith('P_'):
-            check_line(nm, t)
-        elif nm in ('ENDING_TRUE', 'CREDITS'):
-            pass                                    # pages of their own, below
-        elif nm == 'CTRL_TIP':
-            for ln_ in t.split('\n'):
-                check_line(nm, ln_, 236, 63)
-        else:
-            check_line(nm, t, 236, 63)
-    for i, t in enumerate(story.INTRO):
-        check_page(f"intro page {i}", t, 200, 13, 599)
-    for i, t in enumerate(list(story.ENDING) + [story.ENDING_TRUE]):
-        check_page(f"ending page {i}", t, 200, 13, 599)
-    for i, (title, body) in enumerate(zip(story.NOTE_TITLES, story.NOTES)):
-        check_line(f"note {i} title", title, 188, 63)
-        if glyphs(f"note {i}", body):
-            lines = wrap(body, 184)
-            if len(lines) > 90:
-                bad(f"note {i}", f"{len(lines)} lines: more than 9 pages of 10", body)
-            for ln_ in lines:
-                if len(ln_) > 63 or width(ln_) > 184:
-                    bad(f"note {i}", "a line that does not fit its page", ln_)
-    for i, ln_ in enumerate(story.CREDITS.split('\n')):
-        check_line(f"credits line {i}", ln_, 236, 63)
-    for i, t in enumerate(story.DEATHS):
-        check_line(f"death line {i}", t, 236, 63)
-    for i, (t, n) in enumerate(zip(story.CHAPTERS, story.CHNUMS)):
-        check_line(f"chapter {i} title", t, 236, 63)
-        check_line(f"chapter {i} number", n, 118, 16)            # drawn at twice the size
-    for i, k in enumerate(story.KEYS):
-        if not k:
-            continue
-        glyphs(f"key {i}", k)
-        took, unl = fixed.get('M_TOOK', ''), fixed.get('M_UNLOCKED', '')
-        if len(took) > 40 or len(took) + len(k) + 1 > 46:
-            bad(f"key {i}", "pickup message longer than its 48-byte buffer", took + k)
-        if len(unl) > 40 or len(unl) + len(k) + 1 > 54:
-            bad(f"key {i}", "unlock message longer than its 56-byte buffer", unl + k)
-        check_msg(f"key {i} pickup", took + k + '.')
-        check_msg(f"key {i} unlock", unl + k + '.')
+            glyphs(f"{ln} room {r}", d['name'])
+    for nm, t in story.string_list():
+        glyphs(nm, t)
+    try:
+        import textrules
+    except ModuleNotFoundError as e:
+        if e.name != 'textrules':
+            raise
+        textrules = None
+    if textrules:
+        textrules.check(sys.modules[__name__])
     for p in problems:
         print(p)
     print("text check:", "OK" if not problems else f"{len(problems)} problems")

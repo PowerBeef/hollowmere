@@ -21,10 +21,7 @@ extern volatile u16 g_keyPressAcc;
 u16 ui_keys_pressed(void) {
     vsync();
     u16 k = ~REG_KEYINPUT & KEY_MASK;
-    REG_IME = 0;
-    u16 p = g_keyPressAcc;
-    g_keyPressAcc = 0;
-    REG_IME = 1;
+    u16 p = engine_keys_pressed();
     // auto-repeat for d-pad
     if (k & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) {
         if (k == s_held) { if (++s_repeat > 22 && (s_repeat & 3) == 0) p |= k & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT); }

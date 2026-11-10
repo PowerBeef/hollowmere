@@ -19,8 +19,6 @@ Target g_target;
 #define STAMINA_MAX 320
 #define RUN_NOISE  (5 << 16)   // how far a running step is heard (16.16 tiles)
 
-extern int g_blackoutT;
-extern int g_noteRequest;
 
 // SELECT on the default controls: a tap works the light (on release), a
 // hold opens the map

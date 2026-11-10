@@ -59,6 +59,8 @@ void snd_update_3d(s32 lx, s32 ly, u16 angle);   // once per game frame
 // music sequencer
 typedef struct { u16 time; u8 note; u8 vol; } NoteEv;   // time in frames, note semitone (60 = middle C)
 void music_play(const NoteEv *seq, int count, u16 instrument, u16 loopFrames, u8 vol);
+// a tune a script can start by number: ('music', name) (generated from the game's manifest: music_table[NUM_MUSIC] in assets.h)
+typedef struct { const NoteEv *seq; u16 count, instrument, loopFrames; } MusicDef;
 void music_stop(void);
 void music_tick(void);              // 60 Hz from IRQ
 extern u8 g_musicVol;

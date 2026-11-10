@@ -10,7 +10,10 @@ import sys
 import paths
 import harness
 from PIL import Image, ImageDraw
-from views import VIEWS
+try:
+    from views import VIEWS          # the game's benchmark views (tests/views.py)
+except ModuleNotFoundError:
+    VIEWS = []
 
 RUNF = int(os.environ.get("RUNF", "30"))
 

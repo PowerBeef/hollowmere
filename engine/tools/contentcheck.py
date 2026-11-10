@@ -75,6 +75,7 @@ def parse(**over):
 def script(actions, flags=None):
     ctx = scriptc.Ctx(scriptc.StringTable(), {'click': 0}, {} if flags is None else flags, {'start': 1}, {'front': 0}, {'key': 0}, 'testlevel')
     ctx.props = {'shelf': 0}
+    ctx.music = {'tune': 0}
     return scriptc.compile_event(actions, ctx, 'start')
 
 
@@ -158,6 +159,8 @@ CASES = [
     ("an action with an argument missing", lambda: script([('sound3d', 'click', 3)]), "missing or mistaken argument"),
     ("a jump to no label", lambda: script([('jmp', 'nowhere')]), "the label 'nowhere'"),
     ("an unknown sound", lambda: script([('sound', 'boom')]), "there is no sound 'boom'"),
+    ("an unknown tune", lambda: script([('music', 'waltz')]), "there is no music 'waltz'"),
+    ("an action the engine no longer has", lambda: script([('chapter', 'One')]), "there is no action 'chapter'"),
     ("an unknown door", lambda: script([('door', 'back', 'open')]), "there is no door named 'back'"),
     ("a teleport to cell 40", lambda: script([('teleport', 40, 1, 'E')]), "x in"),
     ("a volume of 300", lambda: script([('sound', 'click', 300)]), "the volume in"),
@@ -185,7 +188,8 @@ ACCEPTED = [
         ('if_flag', 'seen', 'top'), ('give', 'key', 15), ('give', 'battery', 30), ('fear', 40), ('blackout', 600), ('thing', 'key', False),
         ('ifnot_key', 15, 'top'), ('fade', 16, 3), ('teleport', 3, 2, 'N'), ('if_fuses_lt', 3, 'top'), ('prop', 'shelf', True),
         ('freeze', True), ('lookat', 3, 2), ('lookat', None), ('note', 31), ('start', 'start'), ('jrand', 128, 'top'), ('hudoff', False),
-        ('checkpoint',), ('jmp', 'top')])),
+        ('music', 'tune', 180), ('musicstop',), ('ambience', 'click', 100), ('stopsounds',), ('placefuses',),
+        ('checkpoint',), ('endlevel', 1), ('ending',), ('jmp', 'top')])),
 ]
 
 

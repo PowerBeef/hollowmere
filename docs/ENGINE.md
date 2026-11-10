@@ -9,12 +9,19 @@ The game logic runs at a fixed 60 Hz and the 3D view renders at 20 fps:
 ```
 VBlank IRQ (60 Hz)        mix audio, page flip (when a frame is ready and 3 vblanks have passed),
                           display effects, sprite attributes, key edge capture
-main loop                 game_update() once per elapsed vblank (at most 4 per frame)
-                          render the next frame into the back page
-                          frame governor adjusts detail for the next frame
+main loop (the game's)    engine_frame_start()
+                          the game's update, once per elapsed vblank (at most 4 per frame)
+                          engine_frame(): game_render() into the back page, the detail governor,
+                          then wait for the flip
 ```
 
-A frame has a budget of **842,688 cycles** (3 vblanks). The main loop measures every frame with two cascaded timers, interrupts included, and the **detail governor** (`game/src/main.c`) steps through eight detail levels: first the far floor gets coarser, then far furniture and far walls drop to one sample per column pair, small far faces drop out sooner, and finally the sides of the view outside a central band go to half resolution. It falls one level the moment a frame comes close to the deadline and climbs back after a run of comfortable frames, waiting longer each time a climb fails. Near things always keep full detail.
+The interrupt handler, the frame's clock and the governor are the engine's (`runtime.c`); the loop itself and what an update does are the game's (see [The game interface](#the-game-interface)).
+
+A frame has a budget of **842,688 cycles** (3 vblanks). `engine_frame()` measures every frame with two cascaded timers, from `engine_frame_start()` to the end of the render, interrupts included, and the **detail governor** steps through eight detail levels: first the far floor gets coarser, then far furniture and far walls drop to one sample per column pair, small far faces drop out sooner, and finally the sides of the view outside a central band go to half resolution. It falls one level the moment a frame comes close to the deadline and climbs back after a run of comfortable frames, waiting longer each time a climb fails, and not at all while the camera stands where the last climb failed. A frame whose update drew a line of HUD text is not counted; a new scene (`engine_frame_reset()`) starts from full detail. Near things always keep full detail.
+
+Work that would cost a frame several is spread out: the flashlight's light tables are kept per power step and only copied when the light is switched, a line of HUD text is drawn one line per logic tick, and games are expected to do the same with their own heavy steps (Hollowmere builds its enemy's path field 32 cells a tick, `engine/src/flow.h`).
+
+Not every view holds 20 fps. Over the 3,396 places and headings the frame-rate sweep samples in Hollowmere (`sweep.py --fps`), 18 stay at 15 fps at the lowest detail level: close views of the hall staircase and of the chapel's pews, where the furniture fills the screen several times over. And every figure in this repository was timed in the mGBA emulator: **nothing has been run on a console**, which may read video memory more slowly than mGBA models it.
 
 ## Display
 
@@ -43,7 +50,9 @@ Furniture, door leaves and props are **textured polygon meshes** (up to 128 vert
 - cull by distance, frustum and the walls' depth buffer;
 - transform only the vertices that front-facing faces use, projecting with a reciprocal table (no divisions);
 - back-face cull against precomputed planes, drop faces too small to see at this distance (per-face LOD), and swap in a simpler far model where one exists;
-- sort the faces far to near and fill them.
+- sort the faces far to near and fill them. A face marked always-drawn (lod 255: posts, rails) is never dropped.
+
+A model over 128 vertices or 64 faces would draw nothing, so the asset build refuses it. Edge slopes are computed with a 2^44 reciprocal (`edge_rcp`) so that an edge clipped at the near plane lands within one row; the camera's angle and each column's ray share one 4,096-step table, which keeps prop edges within a quarter column of the walls they stand against.
 
 Three fill paths share the wall fillers' column-pair machinery:
 
@@ -55,36 +64,48 @@ Three fill paths share the wall fillers' column-pair machinery:
 
 Every column is tested against the wall depth and the lintel clip rows, so furniture disappears correctly behind door frames and through arches. Faces that span a wall in depth (a staircase seen end-on) are culled column by column.
 
-**Sprites** (items, decor and the Night Sister) are depth-sorted together with the props. The Sister is pre-rendered offline from a 3D rig: 8 viewing angles, walk and chase cycles of 8 phases, idle, search, kneel and attack frames, each at four sizes so her texels stay about one per pixel.
+**Sprites** (items, decor and an enemy) are depth-sorted together with the props; one that stands on a prop (a note on a table) is drawn after it. The Sister is pre-rendered offline from a 3D rig: 8 viewing angles, walk and chase cycles of 8 phases, idle, search, kneel and attack frames, each at four sizes so her texels stay about one per pixel.
 
 ## Memory
 
 | Where | What |
 |---|---|
-| IWRAM (32 KB) | every per-pixel routine (ARM code), the mixer, hot state, the stack |
+| IWRAM (32 KB) | every per-pixel routine (ARM code), the mixer, their variables, the stack. Only the `.bss` of `*.iwram.c` files is placed here; everything else's variables go to EWRAM. The linker script asserts that 1,280 bytes are left for the stack (deepest use measured: about 1,000) |
 | VRAM, hidden rows | the depth buffer, colormaps, lintel clips, per-column tables, projected vertices — the bars hide rows of both pages, so the renderer keeps its tables there and reads them as fast as IWRAM (see `gba.ld`) |
 | EWRAM (256 KB) | level state, props, sprites, light grids, script threads, the 2D canvas |
 | ROM | textures in their seven layouts, models, sprites, sounds, levels, text |
 
 The ROM is spent on speed: about 10 MB of the 14.8 MB cartridge is pre-arranged wall texture data.
 
+The renderer's tables in video memory are placed by hand in `gba.ld`. The script is run through the C preprocessor with `limits.h`, and asserts that each table still fits when a limit (vertices per model, voices, view width) is raised.
+
 ## Audio (`audio.c`, `audio.iwram.c`, `mix.s`)
 
-A software mixer on both Direct Sound channels (left and right) at 13,379 Hz, mixing one 224-sample buffer per VBlank with an ARM inner loop in IWRAM. Voices carry volume, pan, pitch and priority; **positional sounds** take a world position and are panned and attenuated from the listener every frame (full volume within a tile, silent beyond 20). A small **note sequencer** plays the music-box and piano pieces. All samples are 8-bit signed PCM generated by `game/content/sounds.py` and `engine/tools/synth.py`.
+A software mixer on both Direct Sound channels (left and right) at 13,379 Hz, mixing one 224-sample buffer per VBlank with an ARM inner loop in IWRAM. Voices carry volume, pan, pitch and priority; **positional sounds** take a world position and are panned and attenuated from the listener every frame (full volume within a tile, silent beyond 20). A small **note sequencer** plays the music-box and piano pieces. A voice the limiter has scaled to silence still plays on and ends in its time. All samples are 8-bit signed PCM generated by the game's `content/sounds.py` with `engine/tools/synth.py`.
 
 ## World and scripting (`world.c`, `script.c`)
 
 `world.c` loads a level (generated by `engine/tools/levelc.py`): edges and edge types, doors (single, double, locked, scripted; their leaves swing as real 3D props), collision boxes, items, interactions (signs, lockers, events), lights and triggers. It provides movement with wall and furniture collision, line of sight and the dynamic light grid.
 
-Levels are driven by **event scripts**: a bytecode VM with 8 concurrent threads. Events start from triggers (entering a cell rectangle, optionally gated by a flag), item pickups, interactions or other scripts. Operations cover waiting, sounds (positional or not), subtitles and objectives, doors, lights, the enemy (spawn, send, pray, hear, chase), screen shake and flashes, flags and branches, giving items, checkpoints, music and ambience, showing items and props, freezing the player, looking at a point, notes, chapter cards and the ending. Scripts are written as Python lists in each level file and compiled by `engine/tools/scriptc.py`.
+Levels are driven by **event scripts**: a bytecode VM with 8 concurrent threads. Events are started by the game: from triggers (walking into a cell rectangle, optionally gated by a flag), item pickups, interactions, or by other scripts. Operations cover waiting, sounds (positional or not), subtitles and objectives, doors, lights, flags and branches, giving items, checkpoints, music and ambience, showing items and props, and a handful the engine passes to the game (`game_script()`): the enemy, ending the level, fear, teleporting and freezing the player. Scripts are written as Python lists in each level file and compiled by `engine/tools/scriptc.py`; [Making a game](MAKING_A_GAME.md) lists every operation. A checkpoint keeps the threads in flight (`script_save` / `script_load`), so a restored game goes on from the step each event had reached.
 
 ## Interface
 
 - **HUD** (`hud.c`): objective, subtitles and prompts rendered into 4bpp sprite tiles with an outline, so text costs nothing on the 3D view; a battery gauge.
-- **Map screen** (`map.c`): built from the level's room data; rooms you have visited, coloured by whether they still hold something to take, doors coloured by lock state, exits and your position.
 - **2D canvas** (`gfx.c`): text with a proportional pixel font, paper and frames for notes and menus, LZ77 full-screen images.
-- **Saves** (`save.c`): checkpoints in battery-backed SRAM.
+- **Map data**: each level carries its rooms, edge kinds and names (`MapDef`), for a game to draw a map screen from. Hollowmere's is `game/src/map.c`.
+- **Saves** (`save.c`): battery-backed SRAM. Eight bytes of settings under the game's tag, then two slots of 256 bytes, each a whole `SaveState` with the game's magic, the layout version, a sequence number and a checksum. A checkpoint is written to the slot that does not hold the newest good state, so a write cut short by the power switch leaves the one before it intact. A slot is loaded only if its magic, version and checksum are right **and** the game finds every index and range in it usable (`game_state_valid`); a game can also carry over a save of an older version of itself (`game_save_import`).
 
-## Where the game begins
+## The game interface
 
-The engine's API is used by the game code in `game/src`: `main.c` (the state machine, play loop and governor), `game.c` (level state, checkpoints, fear), `player.c` (movement, flashlight, stamina, interaction, hiding), `creature.c` (the Night Sister's perception, flow-field pathfinding and behaviour) and `ui.c` (title, menus, notes, journal, options, death and ending screens). A new game replaces those files and the content in `game/content`; see [Making a game](MAKING_A_GAME.md).
+The engine includes no header of a game: `engine/src/game_api.h` is the whole agreement, and the Makefile compiles the engine's files without the game's folder on the include path. It declares
+
+- the state of a playthrough (`SaveState g_state`, `Thing g_things[]`) that scripts, doors and the save work on;
+- what the engine offers beyond drawing and sound: the frame loop (`engine_init`, `engine_frame_start`, `engine_ticks`, `engine_frame`), scripts, the battery save;
+- nine hooks a game defines: its identity (`game_info`), `game_render`, its strings and messages, its checkpoint, the validity of a save, and `game_script` for the script operations whose meaning is the game's.
+
+`examples/minimal/src/main.c` implements all of it in 180 lines. Hollowmere's side is `game/src`: `main.c` (the state machine and play loop), `game.c` (the hooks, level state, checkpoints, fear), `player.c` (movement, flashlight, stamina, interaction, hiding), `creature.c` (the Night Sister's perception, flow-field pathfinding and behaviour), `map.c` (the map screen) and `ui.c` (title, menus, notes, journal, options, death and ending screens). See [Making a game](MAKING_A_GAME.md).
+
+## Limits
+
+`engine/src/limits.h` is the one table of the engine's limits: cells, doors, props, things, events, threads, flags, model sizes, texture sizes. The C code includes it, the asset tools read it and refuse content over a limit by name (`engine/tools/limits.py`; `contentcheck.py` proves each refusal), the generated data repeats the counts as static asserts, and the linker script takes its table sizes from it.

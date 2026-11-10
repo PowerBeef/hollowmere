@@ -27,29 +27,40 @@ def main():
     os.makedirs(out, exist_ok=True)
     T, G = paths.TOOLS, paths.TESTS
     py = sys.executable
+    def debug_commands():
+        # the debug commands the sweep drives (teleport, load level, freeze): a game's test ROM may not have them
+        try:
+            import harness
+            return None if 'g_debugCmd' in harness.symbols() else "this game's test ROM has no debug commands (docs/TOOLS.md)"
+        except Exception as e:
+            return str(e)
+
+    def has(path):
+        return lambda: None if os.path.exists(path) else f"this game has no {os.path.relpath(path, paths.ROOT)}"
+    # (name, command, what the step needs of the game: functions returning None or why it cannot run)
     steps = [
-        ('limits', [py, '-O', f"{T}/contentcheck.py"]),
-        ('cache', [py, f"{T}/cachecheck.py"]),
-        ('audit', [py, f"{T}/audit.py"]),
-        ('text', [py, f"{T}/textcheck.py"]),
-        ('lz77', [py, f"{T}/lz77.py"]),
-        ('host', [py, f"{T}/hostcheck.py", f"{out}/host"]),
-        ('selftest', [py, f"{T}/selftest.py", f"{out}/selftest"]),
-        ('boot', [py, f"{T}/bootcheck.py", f"{out}/boot"]),
-        ('playthrough', [py, f"{G}/playtest.py", f"{out}/playthrough"]),
-        ('regress', [py, f"{T}/regress.py", f"{out}/regress"]),
-        ('sweep', [py, f"{T}/sweep.py", f"{out}/sweep"] + (['--every', '12'] if quick else [])),
-        ('fps', [py, f"{T}/fps.py", f"{out}/fps"]),
-        ('stack', [py, f"{T}/stackcheck.py", f"{out}/stack"]),
-        ('saves', [py, f"{G}/savecheck.py", f"{out}/saves"]),
+        ('limits', [py, '-O', f"{T}/contentcheck.py"], []),
+        ('cache', [py, f"{T}/cachecheck.py"], []),
+        ('audit', [py, f"{T}/audit.py"], []),
+        ('text', [py, f"{T}/textcheck.py"], []),
+        ('lz77', [py, f"{T}/lz77.py"], []),
+        ('host', [py, f"{T}/hostcheck.py", f"{out}/host"], []),
+        ('selftest', [py, f"{T}/selftest.py", f"{out}/selftest"], []),
+        ('boot', [py, f"{T}/bootcheck.py", f"{out}/boot"], []),
+        ('playthrough', [py, f"{G}/playtest.py", f"{out}/playthrough"], [has(f"{G}/playtest.py")]),
+        ('regress', [py, f"{T}/regress.py", f"{out}/regress"], [has(f"{G}/regress")]),
+        ('sweep', [py, f"{T}/sweep.py", f"{out}/sweep"] + (['--every', '12'] if quick else []), [debug_commands]),
+        ('fps', [py, f"{T}/fps.py", f"{out}/fps"], [has(f"{G}/views.py")]),
+        ('stack', [py, f"{T}/stackcheck.py", f"{out}/stack"], []),
+        ('saves', [py, f"{G}/savecheck.py", f"{out}/saves"], [has(f"{G}/savecheck.py")]),
     ]
     failed = []
-    for name, cmd in steps:
+    for name, cmd, needs in steps:
         if only and name not in only:
             continue
-        script = next(c for c in cmd[1:] if not c.startswith('-'))
-        if not os.path.exists(script):
-            print(f"  skip  {name}: this game has no {os.path.relpath(script, paths.ROOT)}")
+        why = next((w for w in (n() for n in needs) if w), None)
+        if why:
+            print(f"  skip  {name}: {why}")
             continue
         t0 = time.time()
         log = os.path.join(out, name + '.log')

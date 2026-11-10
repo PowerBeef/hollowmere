@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Level event scripts: a tiny bytecode VM with a few concurrent threads
-#include "game.h"
+#include "game_api.h"
 #include "world.h"
 #include "audio.h"
 #include "assets.h"
@@ -12,13 +12,15 @@ enum {
     OP_END = 0, OP_WAIT, OP_SOUND, OP_SOUND3D, OP_MSG, OP_OBJECTIVE, OP_DOOR, OP_LIGHT,
     OP_CREATURE, OP_SHAKE, OP_FLASH, OP_FLAG, OP_JNF, OP_JF, OP_JMP, OP_GIVE, OP_CHECKPOINT,
     OP_ENDLEVEL, OP_FEAR, OP_BLACKOUT, OP_MUSIC, OP_MUSICSTOP, OP_AMBIENCE, OP_THING, OP_ENDING,
-    OP_INTER, OP_JNKEY, OP_FADE, OP_TELEPORT, OP_JFUSESLT, OP_PROP, OP_FREEZE, OP_LOOKAT,
-    OP_NOTE, OP_START, OP_PLACEFUSES, OP_STOPSOUNDS, OP_JRAND, OP_CHAPTER, OP_HUDOFF, OP_JKEY
-};
+    OP_JNKEY, OP_FADE, OP_TELEPORT, OP_JFUSESLT, OP_PROP, OP_FREEZE, OP_LOOKAT,
+    OP_NOTE, OP_START, OP_PLACEFUSES, OP_STOPSOUNDS, OP_JRAND, OP_HUDOFF, OP_JKEY
+};      // (the same list, in the same order, as OPS in engine/tools/scriptc.py)
 
 typedef struct { const u8 *base, *pc; s16 wait; u8 active, ev; } Thread;
-_Static_assert(sizeof(Thread) == 12 && MAX_THREADS == 8, "Thread layout: update game/tests/hm.py");
+_Static_assert(sizeof(Thread) == 12 && MAX_THREADS == 8, "Thread layout: the test scripts read it (a game's tests/hm.py)");
 EWRAM_BSS static Thread s_th[MAX_THREADS];
+
+EWRAM_BSS SaveState g_state;         // the playthrough in progress
 
 int  g_shakeAmt, g_shakeT;
 int  g_flashT;
@@ -27,7 +29,6 @@ int  g_fadeTarget = 0, g_fadeSpeed = 0, g_fadeAcc;
 int  g_lookX = -1, g_lookY = -1;
 int  g_ambience = -1;
 int  g_noteRequest = -1;
-int  g_chapterRequest = -1;
 
 void script_reset(void) {
     for (int i = 0; i < MAX_THREADS; i++) s_th[i].active = 0;
@@ -35,7 +36,6 @@ void script_reset(void) {
     g_fadeTarget = 0; g_fadeSpeed = 0;
     g_lookX = g_lookY = -1;
     g_noteRequest = -1;
-    g_chapterRequest = -1;
 }
 
 int script_flag(int f) { return (unsigned)f < NUM_FLAGS && ((g_state.flags[f >> 3] >> (f & 7)) & 1); }
@@ -127,19 +127,7 @@ static int run_one(Thread *t) {
         g_lightsDirty = 1;
         if (p[0] < MAX_LIGHT_GROUPS) g_state.lightLevel[p[0]] = p[1] >> 4;
         p += 2; break;
-    case OP_CREATURE:
-        switch (p[0]) {
-        case 0: creature_despawn(); break;
-        case 1: creature_spawn(cellc(p[1]), cellc(p[2]), CR_PATROL); break;
-        case 2: creature_spawn(cellc(p[1]), cellc(p[2]), CR_SCRIPT); break;
-        case 3: creature_goto(cellc(p[1]), cellc(p[2])); break;
-        case 4: g_cr.mode = p[1]; g_state.creatureMode = p[1]; break;
-        case 5: if (g_cr.state != CR_OFF) { g_cr.state = CR_CHASE; g_cr.alert = 256; g_cr.lostTimer = 0; } break;
-        case 6: creature_spawn(cellc(p[1]), cellc(p[2]), CR_PRAY); break;
-        case 7: if (g_cr.state != CR_OFF) creature_hear(cellc(p[1]), cellc(p[2]), 64 << 16); break;
-        case 8: g_cr.angle = g_cr.lookAngle = g_cr.prayAngle = p[1] << 8; break;
-        }
-        p += 3; break;
+    case OP_CREATURE: game_script(GSC_ENEMY, p[0], p[1], p[2]); p += 3; break;
     case OP_SHAKE: g_shakeAmt = p[0]; g_shakeT = p[1]; p += 2; break;
     case OP_FLASH: g_flashT = p[0]; p += 1; break;
     case OP_FLAG: script_set_flag(p[0], p[1]); p += 2; break;
@@ -153,13 +141,13 @@ static int run_one(Thread *t) {
         else if (p[0] == 3) g_state.keys &= ~(1 << p[1]);
         p += 2; break;
     case OP_CHECKPOINT: t->pc = p; game_checkpoint(); break;      // (kept as going on from after this step)
-    case OP_ENDLEVEL: g_nextLevel = p[0]; g_gameSignal = GS_EXIT; t->pc = p + 1; t->active = 0; return 0;
-    case OP_FEAR: g_fear += p[0]; if (g_fear > 256) g_fear = 256; p += 1; break;
+    case OP_ENDLEVEL: t->pc = p + 1; t->active = 0; game_script(GSC_ENDLEVEL, p[0], 0, 0); return 0;
+    case OP_FEAR: game_script(GSC_FEAR, p[0], 0, 0); p += 1; break;
     case OP_BLACKOUT: g_blackoutT = rd16(p); p += 2; break;
-    case OP_MUSIC:
-        if (p[0] == 0) music_play(mus_lullaby, MUS_LULLABY_LEN, SND_MUSICBOX, MUS_LULLABY_FRAMES, p[1]);
-        else if (p[0] == 1) music_play(mus_fragment, MUS_FRAGMENT_LEN, SND_MUSICBOX, 0, p[1]);
-        else if (p[0] == 2) music_play(mus_ending, MUS_ENDING_LEN, SND_PIANO, 0, p[1]);
+    case OP_MUSIC:        // (the tunes of the game's manifest, in its order)
+#if NUM_MUSIC > 0
+        if (p[0] < NUM_MUSIC) music_play(music_table[p[0]].seq, music_table[p[0]].count, music_table[p[0]].instrument, music_table[p[0]].loopFrames, p[1]);
+#endif
         p += 2; break;
     case OP_MUSICSTOP: music_stop(); break;
     case OP_AMBIENCE:
@@ -172,15 +160,11 @@ static int run_one(Thread *t) {
             else g_things[p[0]].flags |= THF_HIDDEN;
         }
         p += 2; break;
-    case OP_ENDING: g_gameSignal = GS_ENDING; t->active = 0; return 0;
-    case OP_INTER: p += 2; break;
+    case OP_ENDING: t->active = 0; game_script(GSC_ENDING, 0, 0, 0); return 0;
     case OP_JNKEY: p = (g_state.keys >> p[0]) & 1 ? p + 3 : t->base + rd16(p + 1); break;
     case OP_JKEY: p = (g_state.keys >> p[0]) & 1 ? t->base + rd16(p + 1) : p + 3; break;
     case OP_FADE: g_fadeTarget = p[0]; g_fadeSpeed = p[1]; p += 2; break;
-    case OP_TELEPORT:
-        g_player.x = cellc(p[0]); g_player.y = cellc(p[1]); g_player.angle = p[2] << 14;
-        g_cam.x = g_player.x; g_cam.y = g_player.y; g_cam.angle = g_player.angle;
-        p += 3; break;
+    case OP_TELEPORT: game_script(GSC_TELEPORT, p[0], p[1], p[2]); p += 3; break;
     case OP_JFUSESLT: p = (g_state.fusesPlaced < p[0]) ? t->base + rd16(p + 1) : p + 3; break;
     case OP_PROP:
         if (p[0] < g_numProps) {
@@ -189,14 +173,13 @@ static int run_one(Thread *t) {
             g_state.propSet[p[0] >> 3] |= 1 << (p[0] & 7);
         }
         p += 2; break;
-    case OP_FREEZE: g_player.frozen = p[0]; p += 1; break;
+    case OP_FREEZE: game_script(GSC_FREEZE, p[0], 0, 0); p += 1; break;
     case OP_LOOKAT: g_lookX = p[0]; g_lookY = p[1]; if (p[0] == 255) g_lookX = -1; p += 2; break;
     case OP_NOTE: g_noteRequest = p[0]; p += 1; break;
     case OP_START: t->pc = p + 1; script_start(p[0]); return 1;
     case OP_PLACEFUSES: g_state.fusesPlaced += g_state.fuses; g_state.fuses = 0; break;
     case OP_STOPSOUNDS: snd_stop_all(); g_ambience = -1; break;
     case OP_JRAND: p = ((rng_next() & 255) < p[0]) ? t->base + rd16(p + 1) : p + 3; break;
-    case OP_CHAPTER: g_chapterRequest = rd16(p); p += 2; break;
     case OP_HUDOFF: hud_set_visible(!p[0]); p += 1; break;
     default: t->active = 0; return 0;
     }
@@ -212,7 +195,7 @@ void script_update(void) {
         int guard = 64;
         while (t->active && t->wait == 0 && guard-- > 0) {
             if (!run_one(t)) break;
-            if (g_noteRequest >= 0 || g_chapterRequest >= 0) break;
+            if (g_noteRequest >= 0) break;
         }
     }
 }

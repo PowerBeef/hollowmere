@@ -9,15 +9,16 @@
 //
 // A slot is loaded only if its magic, layout version and checksum are right
 // and the game finds every index and range in it valid (game_state_valid).
-#include "game.h"
-#include "assets.h"
+// When neither is, the game may recognise a save of an older version of
+// itself in the same bytes (game_save_import).
+#include "game_api.h"
 #include <string.h>
+#include <stddef.h>
 
 #define SRAM ((vu8 *)0x0E000000)
 #define SAVE_OFS  32
 #define SLOT_SIZE 256
 _Static_assert(sizeof(SaveState) <= SLOT_SIZE, "SaveState no longer fits a save slot");
-Settings g_settings = { 1, 3, 0, 0 };
 
 static void sram_write(int ofs, const void *src, int n) {
     const u8 *s = src;
@@ -28,18 +29,21 @@ static void sram_read(int ofs, void *dst, int n) {
     for (int i = 0; i < n; i++) d[i] = SRAM[ofs + i];
 }
 
-static u16 sum16(const u8 *p, unsigned n) {
+u16 save_sum16(const void *data, unsigned n) {
+    const u8 *p = data;
     u32 sum = 0x1234;
     for (unsigned i = 0; i < n; i++) sum = (sum * 31 + p[i]) & 0xFFFF;
     return sum;
 }
-static u16 checksum(const SaveState *s) { return sum16((const u8 *)s, offsetof(SaveState, checksum)); }
+static u16 checksum(const SaveState *s) { return save_sum16(s, offsetof(SaveState, checksum)); }
+
+void save_raw_read(int ofs, void *dst, int n) { sram_read(SAVE_OFS + ofs, dst, n); }
 
 EWRAM_BSS static SaveState s_slot, s_work;      // (a state is too big to have several on the stack)
 
 static int slot_good(int slot, SaveState *s) {
     sram_read(SAVE_OFS + slot * SLOT_SIZE, s, sizeof *s);
-    return s->magic == SAVE_MAGIC && s->version == SAVE_VERSION && s->checksum == checksum(s) && game_state_valid(s);
+    return s->magic == game_info.saveMagic && s->version == SAVE_VERSION && s->checksum == checksum(s) && game_state_valid(s);
 }
 
 // the slot holding the newest good state into *out; -1 if neither is good
@@ -54,7 +58,7 @@ int save_write(const SaveState *s) {
     int have = newest(tmp);
     u8 seq = have < 0 ? 0 : (u8)(tmp->seq + 1);
     memcpy(tmp, s, sizeof *tmp);
-    tmp->magic = SAVE_MAGIC;
+    tmp->magic = game_info.saveMagic;
     tmp->version = SAVE_VERSION;
     tmp->seq = seq;
     tmp->checksum = checksum(tmp);
@@ -62,33 +66,10 @@ int save_write(const SaveState *s) {
     return 1;
 }
 
-// A save written by version 1.0: one slot at SAVE_OFS, the same fields
-// without the script threads. Its checkpoint cannot be resumed (the level
-// scripts it would need were not saved), but the chapter and what carries
-// from chapter to chapter can: the player starts that chapter again.
-#define OLD_MAGIC 0x484C5732u       // "HLW2"
-#define OLD_HEAD  offsetof(SaveState, script)
-#define OLD_SIZE  (OLD_HEAD + 12)   // + px, py, pangle, checksum
-static int old_save(SaveState *s) {
-    SaveState *o = &s_slot;         // (its fields up to the script threads are where they were)
-    const u8 *raw = (const u8 *)o;
-    sram_read(SAVE_OFS, o, OLD_SIZE);
-    u16 sum = raw[OLD_SIZE - 2] | raw[OLD_SIZE - 1] << 8;
-    if (o->magic != OLD_MAGIC || sum != sum16(raw, OLD_SIZE - 2) || o->level >= NUM_LEVELS) return 0;
-    memset(s, 0, sizeof *s);
-    s->magic = SAVE_MAGIC; s->version = SAVE_VERSION;
-    s->level = o->level;
-    s->notesFound = o->notesFound;
-    s->battery = o->battery > 1000000 ? 1000000 : o->battery;
-    s->flashOn = 1;
-    s->deaths = o->deaths;
-    s->playFrames = o->playFrames;
-    return 1;
-}
-
 int save_read(SaveState *s) {
     if (newest(s) >= 0) return SAVE_OK;
-    return old_save(s) ? SAVE_CHAPTER : SAVE_NONE;
+    if (game_save_import(s)) { s->magic = game_info.saveMagic; s->version = SAVE_VERSION; return SAVE_IMPORTED; }
+    return SAVE_NONE;
 }
 
 int save_exists(void) { return save_read(&s_work) != SAVE_NONE; }
@@ -99,18 +80,18 @@ void save_erase(void) {
     sram_write(SAVE_OFS + SLOT_SIZE, &z, 4);
 }
 
-void settings_save(void) {
-    u8 b[8] = { 'H', 'L', 'S', '1', g_settings.brightness, g_settings.volume, g_settings.controls, g_settings.seenIntro };
+// The game's options: four bytes after its tag, at the start of the save area.
+void save_settings_write(const u8 v[4]) {
+    u8 b[8];
+    memcpy(b, game_info.settingsTag, 4);
+    memcpy(b + 4, v, 4);
     sram_write(0, b, 8);
 }
 
-void settings_load(void) {
+int save_settings_read(u8 v[4]) {
     u8 b[8];
     sram_read(0, b, 8);
-    if (b[0] == 'H' && b[1] == 'L' && b[2] == 'S' && b[3] == '1') {
-        g_settings.brightness = b[4] > 2 ? 1 : b[4];
-        g_settings.volume = b[5] > 4 ? 3 : b[5];
-        g_settings.controls = b[6] > 1 ? 0 : b[6];
-        g_settings.seenIntro = b[7] & 1;
-    }
+    if (memcmp(b, game_info.settingsTag, 4)) return 0;
+    memcpy(v, b + 4, 4);
+    return 1;
 }

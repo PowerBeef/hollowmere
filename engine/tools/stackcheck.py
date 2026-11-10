@@ -15,7 +15,10 @@ import sys
 import paths
 import harness
 import bench
-from views import VIEWS
+try:
+    from views import VIEWS          # the game's benchmark views (tests/views.py), if it has any
+except ModuleNotFoundError:
+    VIEWS = []
 
 
 
@@ -44,9 +47,12 @@ def main():
     floor = int(sys.argv[sys.argv.index('--min') + 1]) if '--min' in sys.argv else 256
     os.makedirs(out, exist_ok=True)
     levels = sorted({v[0] for v in VIEWS})
-    dev = [l.replace('{out}', out) for l in bench.script(VIEWS, noirq=0)] + ["poke32 {g_govOff} 0", "seed 7"]
-    for lv in levels:
-        dev += harness.load_level(lv) + ["monkey 900 0x3FF"]
+    if VIEWS and 'g_debugCmd' in harness.symbols(paths.ELF):
+        dev = [l.replace('{out}', out) for l in bench.script(VIEWS, noirq=0)] + ["poke32 {g_govOff} 0", "seed 7"]
+        for lv in levels:
+            dev += harness.load_level(lv) + ["monkey 900 0x3FF"]
+    else:                               # a game without views or debug commands: boot and random input
+        dev = harness.boot() + ["seed 7", "monkey 3600 0x3FF"]
     rel = harness.boot() + ["seed 7", "monkey 3600 0x3FF"]
     rooms = [measure('test', paths.ROM, paths.ELF, dev, out),
              measure('release', paths.RELEASE_ROM, paths.RELEASE_ELF, rel, out)]

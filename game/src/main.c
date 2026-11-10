@@ -12,68 +12,7 @@
 #include "ui.h"
 #include "dev.h"
 
-volatile u32 g_vblanks;
-volatile u8  g_flipReq;
-volatile u8  g_dispPage, g_bgHide;
-volatile u32 g_lastFlip;
-volatile u8  g_minFrames = 3;          // 20 fps
-u8 g_quality;               // the detail level the governor chose (0 = full)
-u32 g_profRaw;              // cycles the last render took
-#ifdef DEV
-u32 g_profFrame, g_profIrq;
-EWRAM_BSS u32 g_irqParts[5];
-volatile u32 g_govOff;      // test harness: hold the detail level fixed
-#endif
-
-extern int g_noteRequest, g_chapterRequest;
-
-volatile u16 g_keyPressAcc;
-static u16 s_keyPrevIrq;
-
-EWRAM_BSS u32 g_irqStack[256] ALIGN4;      // the interrupt handlers' stack (crt0.s)
-static inline u32 prof_read(void);
-void irq_dispatch(u32 flags) {
-    if (flags & IRQ_VBLANK) {
-        DEV_ONLY(u32 ta = prof_read();)
-        audio_vblank();
-        g_vblanks++;
-        u16 k = ~REG_KEYINPUT & KEY_MASK;
-        g_keyPressAcc |= k & ~s_keyPrevIrq;
-        s_keyPrevIrq = k;
-        int flipped = 0;
-        if (g_flipReq && g_vblanks - g_lastFlip >= g_minFrames) {
-            g_dispPage ^= 1;
-            g_bgHide = 0;
-            g_flipReq = 0;
-            g_lastFlip = g_vblanks;
-            flipped = 1;
-        }
-        DEV_ONLY(u32 t1 = prof_read();)
-        fx_vblank(flipped);
-        DEV_ONLY(u32 t2 = prof_read();)
-        hud_oam_commit();
-        DEV_ONLY(u32 t3 = prof_read();)
-        music_tick();
-        DEV_ONLY(u32 t4 = prof_read();)
-        audio_mix();
-        DEV_ONLY(u32 tb = prof_read();
-                 g_profIrq = (g_profIrq * 7 + (tb - ta)) >> 3;
-                 g_irqParts[0] = t1 - ta; g_irqParts[1] = t2 - t1; g_irqParts[2] = t3 - t2; g_irqParts[3] = t4 - t3; g_irqParts[4] = tb - t4;)
-    }
-}
-
-static inline void prof_start(void) {
-    REG_TM2CNT_H = 0; REG_TM3CNT_H = 0;
-    REG_TM2CNT_L = 0; REG_TM3CNT_L = 0;
-    REG_TM3CNT_H = 0x84; REG_TM2CNT_H = 0x80;
-}
-// (the two halves are read one after the other: when the low one wraps in
-// between, the high one read first is one short, 65,536 cycles in all)
-static inline u32 prof_read(void) {
-    u32 hi = REG_TM3CNT_L, lo = REG_TM2CNT_L, hi2 = REG_TM3CNT_L;
-    if (hi2 != hi) lo = REG_TM2CNT_L;
-    return (hi2 << 16) | lo;
-}
+extern volatile u16 g_keyPressAcc;      // key presses caught by the vblank interrupt (engine_keys_pressed takes them)
 
 // --------------------------------------------------------------- splash
 static void splash(void) {
@@ -92,103 +31,6 @@ static void splash(void) {
 }
 
 // --------------------------------------------------------------- play
-u32 g_renderCount, g_profUpdate;
-// the detail governor's state (render_frame)
-static u8 s_q, s_hold, s_since = 255;
-static u16 s_wait = 8, s_stale;
-static u32 s_prevWork, s_tried, s_failed = 0xFFFFFFFF;       // the frame cost the last try up started from; the one that failed
-static s32 s_failX, s_failY;                                 // ... and where the camera was
-static u16 s_failA;
-// a new scene (a level just loaded, a checkpoint restored): full detail
-// until its frames prove too slow, which takes one frame per level
-static void governor_reset(void) { s_q = 0; s_hold = 0; s_since = 255; s_wait = 8; s_prevWork = 0; s_failed = 0xFFFFFFFF; s_stale = 0; }
-
-// Draws a frame and waits for it to be shown. The governor adds the time
-// since the last prof_start() (the game update that led to this frame) to
-// the time of the render: every caller starts the timer before its update,
-// or just before the call when it renders without one.
-static void render_frame(void) {
-    g_profUpdate = prof_read();
-    prof_start();
-    game_render();
-    g_renderCount++;
-    g_profRaw = prof_read();
-    DEV_ONLY(g_profFrame = (g_profFrame * 7 + g_profRaw) >> 3;)
-    // detail governor for the 20 fps frame (3 vblanks = 842k cycles): when
-    // a frame comes close to the deadline the far floor gets coarser, far
-    // walls and far furniture drop to one sample per column pair and small
-    // furniture faces are dropped sooner; near things keep full detail.
-#ifdef DEV
-    if (!g_govOff)
-#endif
-    {
-        // levels, cheapest-looking first: the far floor coarser (split), far
-        // furniture at one sample per column pair (hd, 1/4096 tile), far
-        // walls at one sample per pair (whalf: walls shorter than this) and
-        // everything at one sample per pair also one sample per two rows
-        // (vh), small far faces dropped sooner (lod), then the sides of the
-        // view outside a central band of full resolution
-        static const struct { u8 band, split, vh, pad; u16 whalf, hd, lod; } q[] = {
-            { 120,  0, 0, 0,   0, 0x2400, 256 },
-            { 120, 20, 0, 0,   0, 0x2000, 256 },
-            { 120, 26, 1, 0,  96, 0x1C00, 288 },
-            { 120, 30, 1, 0, 128, 0x1800, 320 },
-            { 120, 35, 1, 0, 192, 0x1400, 384 },
-            {  90, 35, 1, 0, 256, 0x1000, 448 },
-            {  60, 35, 1, 0, 320, 0x0C00, 512 },
-            {   0, 35, 1, 0, 400, 0x0000, 768 },
-        };
-        // a frame has 842,688 cycles (3 vblanks); the work is measured from
-        // the start of the game update to the end of the render, interrupts
-        // included. Too slow: one level down at once. Comfortably fast for 8
-        // frames: try one level up; if that level then proves too slow at
-        // once, wait longer before the next try.
-        // (Successive frames alternate in cost by 20-25k: going up is judged
-        // on the mean of the last two, going down on each frame.)
-        // (A frame whose update drew a line of text is no measure of the
-        // scene: it counts as its predecessor did.)
-        u32 work = g_profUpdate + g_profRaw;
-        if (g_hudDrew) { g_hudDrew = 0; if (s_prevWork) work = s_prevWork; }
-        u32 pair = (work + s_prevWork) >> 1;
-        s_prevWork = work;
-        if (s_since < 255) s_since++;
-        if (work > 820000) {
-            if (s_q < 7) {
-                s_q++;
-                if (s_since <= 2) {                 // the try failed
-                    s_wait = s_wait < 240 ? s_wait * 2 : 240;
-                    s_failed = s_tried;             // ... from frames this cheap, here: no use trying again as things are
-                    s_failX = g_cam.x; s_failY = g_cam.y; s_failA = g_cam.angle;
-                }
-            }
-            s_hold = 0;
-        } else if (pair < 770000 && (pair < s_failed - (s_failed >> 5) || s_stale > 600 ||
-                                     dist_approx(g_cam.x - s_failX, g_cam.y - s_failY) > 0x8000 ||
-                                     (u16)(g_cam.angle - s_failA + 0x1000) > 0x2000)) {
-            // (not while the view is the one in which the last try failed and
-            // costs what it did: a try that fails is a frame dropped. Half a
-            // tile or a sixteenth of a turn away, 3% cheaper, or half a minute
-            // on, it is worth another.)
-            if (++s_hold >= s_wait && s_q > 0) { s_q--; s_hold = 0; s_since = 0; s_tried = pair; s_stale = 0; }
-        } else s_hold = 0;
-        if (s_stale < 0xFFFF) s_stale++;
-        if (s_since > 60 && s_wait > 8) { s_wait--; }
-        extern u32 g_lodScale;
-        extern s32 g_halfDist, g_floorSplit, g_wallHalfLh, g_fullC0, g_fullC1;
-        extern u32 g_vhalf;
-        g_vhalf = q[s_q].vh;
-        g_floorSplit = q[s_q].split;
-        g_wallHalfLh = q[s_q].whalf;
-        g_halfDist = (s32)q[s_q].hd << 4;
-        g_lodScale = q[s_q].lod;
-        g_fullC0 = VIEW_W / 2 - q[s_q].band;
-        g_fullC1 = VIEW_W / 2 + q[s_q].band;
-        g_quality = s_q;
-    }
-    g_flipReq = 1;
-    while (g_flipReq) bios_halt();
-}
-
 static void death_sequence(void) {
     Player *p = &g_player;
     p->frozen = 1;
@@ -223,8 +65,7 @@ static void death_sequence(void) {
         render_enter_3d();
         render_view(backbuf3d());
         fx_prepare();
-        g_flipReq = 1;
-        while (g_flipReq) bios_halt();
+        engine_present();
     }
     hud_set_visible(0); hud_update();
     ui_jumpscare();
@@ -236,9 +77,9 @@ static void death_sequence(void) {
 static void level_transition(int next) {
     for (int i = 0; i <= 16; i += 2) {
         g_fx.fade = i;
-        prof_start();
+        engine_frame_start();
         game_update();
-        render_frame();
+        engine_frame();
     }
     snd_stop_all();
     if (next >= NUM_LEVELS) { g_gameSignal = GS_ENDING; return; }
@@ -250,12 +91,12 @@ static void level_transition(int next) {
 
 static void fade_in_game(void) {
     g_fx.mode3d = 1;
-    governor_reset();
+    engine_frame_reset();
     for (int i = 16; i >= 0; i -= 2) {
         g_fx.fade = i;
-        prof_start();
+        engine_frame_start();
         game_update();
-        render_frame();
+        engine_frame();
     }
     g_fx.fade = 0;
 }
@@ -266,7 +107,7 @@ static void play(void) {
     fade_in_game();
     u32 last = g_vblanks;
     while (1) {
-        prof_start();
+        engine_frame_start();
         u32 now = g_vblanks;
         int steps = now - last;
         last = now;
@@ -274,21 +115,17 @@ static void play(void) {
         if (steps > 4) steps = 4;
         for (int i = 0; i < steps; i++) {
             game_update();
-            if (g_gameSignal || g_noteRequest >= 0 || g_chapterRequest >= 0) break;
+            if (g_gameSignal || g_noteRequest >= 0) break;
         }
         if (g_noteRequest >= 0) {
             int id = g_noteRequest;
             g_noteRequest = -1;
-            render_frame();
+            engine_frame();
             ui_note(id);
             g_fx.mode3d = 1;
             g_keyPressAcc = 0;
             last = g_vblanks;
             continue;
-        }
-        if (g_chapterRequest >= 0) {
-            g_chapterRequest = -1;
-            last = g_vblanks;
         }
         switch (g_gameSignal) {
         case GS_PAUSE:
@@ -297,16 +134,16 @@ static void play(void) {
             g_fx.mode3d = 1;
             g_keyPressAcc = 0;
             last = g_vblanks;
-            prof_start();               // (the time spent away is not this frame's)
+            engine_frame_start();               // (the time spent away is not this frame's)
             break;
         case GS_MAP:
             g_gameSignal = GS_PLAY;
             ui_map();
             g_fx.mode3d = 1;
-            for (int i = 16; i >= 0; i -= 2) { g_fx.fade = i; prof_start(); render_frame(); }   // back to the view, the game still held
+            for (int i = 16; i >= 0; i -= 2) { g_fx.fade = i; engine_frame_start(); engine_frame(); }   // back to the view, the game still held
             g_keyPressAcc = 0;
             last = g_vblanks;
-            prof_start();               // (the time spent away is not this frame's)
+            engine_frame_start();               // (the time spent away is not this frame's)
             break;
         case GS_DEAD:
             death_sequence();
@@ -315,7 +152,7 @@ static void play(void) {
             g_keyPressAcc = 0;          // nothing pressed during the death screens carries over
             fade_in_game();
             last = g_vblanks;
-            prof_start();               // (the time spent away is not this frame's)
+            engine_frame_start();               // (the time spent away is not this frame's)
             break;
         case GS_EXIT:
             level_transition(g_nextLevel);
@@ -324,38 +161,28 @@ static void play(void) {
             g_keyPressAcc = 0;          // nor during the chapter card
             fade_in_game();
             last = g_vblanks;
-            prof_start();               // (the time spent away is not this frame's)
+            engine_frame_start();               // (the time spent away is not this frame's)
             break;
         }
         if (g_gameSignal == GS_ENDING) {
             int all = 1;
             for (int i = 0; i < NUM_NOTES; i++) if (!((g_state.notesFound >> i) & 1)) all = 0;
-            for (int i = 0; i <= 16; i++) { g_fx.fade = i; prof_start(); render_frame(); }
+            for (int i = 0; i <= 16; i++) { g_fx.fade = i; engine_frame_start(); engine_frame(); }
             save_erase();
             ui_ending(all);
             return;
         }
-        render_frame();
+        engine_frame();
     }
 }
 
 int main(void) {
-    REG_WAITCNT = 0x4317;
-    REG_DISPCNT = DCNT_MODE4 | DCNT_BG2 | DCNT_OBJ | DCNT_OBJ_1D;
     settings_load();
     g_brightness = g_settings.brightness;
     g_masterVol = 16 + g_settings.volume * 12;
-    pal_bg_game();
-    bios_lz77_wram(cmap_default, g_colormapSrc);
-    render_init();
+    engine_init();
     // the flashlight's states the game jumps between: on, off, and the dip of a flicker (player.c)
     render_flash_warm(256); render_flash_warm(0); render_flash_warm(256 / 5);
-    fx_init();
-    hud_init();
-    audio_init();
-    REG_DISPSTAT = 8;
-    REG_IE = IRQ_VBLANK;
-    REG_IME = 1;
 
     splash();
     while (1) {

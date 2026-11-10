@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Hollowmere asset build: generates gen/*.c, gen/*.h, gen/*.s and gen/bin/."""
+"""The asset build: turns a game's content (its content/ folder, described by
+content/manifest.py) into gen/assets.c, gen/assets.h, gen/data.s and gen/bin/.
+docs/MAKING_A_GAME.md lists what the content modules must provide."""
 import os
 import sys
 import hashlib
@@ -82,9 +84,6 @@ def src(*names):
     return [open(paths.source(n)).read() for n in names]
 
 
-SISTER_NPZ = os.path.join(paths.ASSETS, 'sister.npz')
-SISTER_PALETTE_FRAMES = ['walk_0_0', 'walk_2_2', 'walk_4_4', 'walk_6_6', 'chase_0_3', 'idle_1_0',
-                         'search_0_0', 'kneel_4_0', 'attack_0_2']
 
 
 def sister_mips(rgb8, a8, e8, w):
@@ -107,9 +106,11 @@ def sister_mips(rgb8, a8, e8, w):
     return out
 
 
-def load_sister():
-    z = np.load(SISTER_NPZ)
-    key = hashlib.sha1(open(SISTER_NPZ, 'rb').read()).hexdigest()
+def load_sister(path):
+    """The enemy's pre-rendered sprite sheets (the manifest's ENEMY_SHEETS):
+    {frame name: the frame at four sizes}."""
+    z = np.load(path)
+    key = hashlib.sha1(open(path, 'rb').read()).hexdigest()
     def build():
         d = {}
         for i, nm in enumerate(z['names']):
@@ -151,7 +152,27 @@ def write_if_changed(path, text):
     open(path, 'w').write(text)
 
 
-from manifest import LEVELS     # the game's levels, in play order
+import manifest                 # the game's: what to build (docs/MAKING_A_GAME.md)
+LEVELS = manifest.LEVELS        # its levels, in play order
+# events every level has, in this order (ids 1, 2...): the engine starts the
+# first when a level begins, the game's code can start the others by number
+LEVEL_EVENTS = tuple(getattr(manifest, 'LEVEL_EVENTS', ('start',)))
+# tunes a script can start: (name in music.SEQUENCES, instrument sound, loops)
+MUSIC = list(getattr(manifest, 'MUSIC', []))
+# the models of a door's leaf: one for a single door, one for each half of a double
+DOOR_MODELS = dict(getattr(manifest, 'DOOR_MODELS', dict(single='leaf_single', half='leaf_half')))
+# the enemy's pre-rendered sprite sheets, or None: dict(file=, palette_frames=[frame names that speak for all in the palette])
+ENEMY_SHEETS = getattr(manifest, 'ENEMY_SHEETS', None)
+
+
+def optional(name):
+    """A content module a game may leave out."""
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError as e:
+        if e.name != name:
+            raise
+        return None
 
 
 def check_textures(wall_imgs, flat_imgs, ptex_imgs):
@@ -284,7 +305,7 @@ def main():
     ptex_imgs = cached(('ptex', ptex_names, src_w), lambda: {n: proptex.TEXTURES[n]() for n in ptex_names})
     import props
     spr_src = [open(paths.source(f)).read() for f in ('props.py', 'spritekit.py', 'noise.py')]
-    sister = load_sister()
+    sister = load_sister(os.path.join(paths.ASSETS, ENEMY_SHEETS['file'])) if ENEMY_SHEETS else {}
 
     def build_sprites():
         d = {}
@@ -300,7 +321,8 @@ def main():
     sprite_imgs = [rgb[mask & ~em].reshape(-1, 1, 3) for (rgb, mask, em) in sprites.values()]
     # the Night Sister: a handful of her frames speak for all of them in the
     # palette (about as many pixels as the old hand-drawn creature had)
-    for nm in SISTER_PALETTE_FRAMES:
+    for nm in (ENEMY_SHEETS or {}).get('palette_frames', []):
+        check(nm in sister, 'manifest', f"ENEMY_SHEETS names the frame {nm!r}, which {ENEMY_SHEETS['file']} does not have")
         rgb, mask, em = sister[nm][0]
         sprite_imgs.append(rgb[mask & ~em].reshape(-1, 1, 3))
 
@@ -501,6 +523,10 @@ def main():
         mdl_lines.append(f"{{mdl_{cname(n)}_v, mdl_{cname(n)}_f, {len(m.verts)}, {len(m.faces)}, {rad}, {int(m.zmax() * 256)}, {nocc}, {mflags}, {far_i}, {far_d}, {ccx}, {ccy}}}")
     out.c.append("const Model models[] = {\n  " + ',\n  '.join(mdl_lines) + "\n};\n")
     out.h.append(f"#define NUM_MODELS {len(models)}")
+    for kind in ('single', 'half'):
+        check(DOOR_MODELS.get(kind) in model_ids, 'manifest', f"DOOR_MODELS['{kind}'] is {DOOR_MODELS.get(kind)!r}: furniture.MODELS has no such model "
+                                                              f"(the engine hangs it in every door)")
+        out.h.append(f"#define DOOR_MODEL_{kind.upper()} {model_ids[DOOR_MODELS[kind]]}")
 
     # ---------------------------------------------------------- sprites
     def encode_sprite(rgb, mask, em):
@@ -555,8 +581,8 @@ def main():
     out.h.append(f"#define NUM_THING_TYPES {len(thing_names) + 1}")
     out.h.append("extern const ThingType thing_types[NUM_THING_TYPES];")
     out.c.append("const ThingType thing_types[NUM_THING_TYPES] = {\n  " + ',\n  '.join(tt_lines) + "\n};\n")
-    # the Night Sister: every frame at four sizes (full, 1/2, 1/4, 1/8)
-    out.h.append('\n// the Night Sister (game/content/sister): frames x view-angle, each at 4 sizes')
+    # the enemy: every frame at four sizes (full, 1/2, 1/4, 1/8)
+    out.h.append('\n// the enemy (the manifest\'s ENEMY_SHEETS): frames x view-angle, each at 4 sizes')
     cr_names = list(sister)
     for nm in cr_names:
         for lv, img in enumerate(sister[nm]):
@@ -566,9 +592,10 @@ def main():
     rows = []
     for lv in range(4):
         rows.append('{' + ','.join(f"(const SpriteImg*)spr_cr_{nm}_{lv}" for nm in cr_names) + '}')
-    out.h.append(f"#define CR_NFRAMES {len(cr_names)}")
-    out.c.append("const SpriteImg *const creature_frames[4][CR_NFRAMES] = {\n  " + ',\n  '.join(rows) + "\n};\n")
-    out.h.append("extern const SpriteImg *const creature_frames[4][CR_NFRAMES];")
+    if cr_names:
+        out.h.append(f"#define CR_NFRAMES {len(cr_names)}")
+        out.c.append("const SpriteImg *const creature_frames[4][CR_NFRAMES] = {\n  " + ',\n  '.join(rows) + "\n};\n")
+        out.h.append("extern const SpriteImg *const creature_frames[4][CR_NFRAMES];")
     first = {}
     for i, nm in enumerate(cr_names):
         first.setdefault(nm.split('_')[0], i)
@@ -594,9 +621,9 @@ def main():
 
     # ------------------------------------------------------------ sounds
     import sounds
-    import music
     import synth
-    src_hash = src('sounds.py', 'synth.py', 'music.py', 'noise.py')     # (a sound can be a rendered tune)
+    music = optional('music')
+    src_hash = src('sounds.py', 'synth.py', *(['music.py'] if music else []), 'noise.py')     # (a sound can be a rendered tune)
     snd_names = list(sounds.SOUNDS)
     out.h.append('\n// sounds')
     defs = []
@@ -613,10 +640,20 @@ def main():
     out.h.append(f"#define NUM_SND {len(snd_names)}")
     out.h.append('#include "audio.h"\nextern const SoundDef snd_defs[NUM_SND];')
     out.c.append('#include "audio.h"\nconst SoundDef snd_defs[NUM_SND] = {\n  ' + ',\n  '.join(defs) + '\n};\n')
-    for nm, fn in music.SEQUENCES.items():
+    check(snd_names, 'sounds.py', "SOUNDS is empty: a game needs at least one sound")
+    sequences = getattr(music, 'SEQUENCES', {}) if music else {}
+    for nm, fn in sequences.items():
         ev, total = fn()
         out.c.append(f"const NoteEv mus_{nm}[] = {{" + ','.join(f"{{{t},{n},{v}}}" for t, n, v in ev) + "};\n")
         out.h.append(f"extern const NoteEv mus_{nm}[];\n#define MUS_{nm.upper()}_LEN {len(ev)}\n#define MUS_{nm.upper()}_FRAMES {total}")
+    # the tunes a script can start, by number
+    rows = []
+    for (nm, instrument, loops) in MUSIC:
+        check(nm in sequences, 'manifest', f"MUSIC names the tune {nm!r}, which music.SEQUENCES does not have")
+        check(instrument in snd_names, 'manifest', f"MUSIC plays {nm!r} on {instrument!r}, which sounds.SOUNDS does not have")
+        rows.append(f"{{mus_{nm}, MUS_{nm.upper()}_LEN, SND_{cname(instrument).upper()}, {f'MUS_{nm.upper()}_FRAMES' if loops else 0}}}")
+    out.h.append(f"#define NUM_MUSIC {len(rows)}\nextern const MusicDef music_table[];")
+    out.c.append("const MusicDef music_table[] = {" + ', '.join(rows or ['{0}']) + "};\n")
 
     # ---------------------------------------------------------- levels
     def cstr(t):
@@ -655,13 +692,14 @@ def main():
         out.blob(pre + '_vis', lz77.compress(bytes(vis)))
         # ---- events
         ev_src = dict(getattr(mod, 'EVENTS', {}))
-        order, ev_ids = scriptc.event_table(ev_src, ('start', 'lantern'), ln)
+        order, ev_ids = scriptc.event_table(ev_src, LEVEL_EVENTS, ln)
 
         def event(nm, what):
             check(nm in ev_ids, ln, f"{what} starts the event {nm!r}, which EVENTS does not have")
             return ev_ids[nm]
         ctx = scriptc.Ctx(strings, sound_ids, flags, ev_ids, L.door_names, L.thing_names, L.name)
         ctx.props = L.prop_names
+        ctx.music = {nm: i for i, (nm, _, _) in enumerate(MUSIC)}
         ev_ptrs, ev_lens = ['0'], [0]
         for nm in order:
             code = scriptc.compile_event(ev_src.get(nm, []), ctx, nm)
@@ -828,21 +866,22 @@ def main():
     out.h.append(f"#define NUM_STRINGS {len(strings.items)}\nextern const char *const str_table[];")
     for nm, i in strings.names.items():
         out.h.append(f"#define STR_{nm} {i}")
-    for k, v in story.COUNTS.items():
+    for k, v in getattr(story, 'COUNTS', {}).items():
         out.h.append(f"#define {k} {v}")
-    for k, v in story.BASES.items():
+    for k, v in getattr(story, 'BASES', {}).items():
         out.h.append(f"#define {k} STR_{v}")
 
     # ------------------------------------------------------------ images
-    import images
-    img_src = [open(paths.source(f)).read() for f in ('images.py', 'noise.py', 'palette.py')]
-    # the jumpscare is a render of the Night Sister: rebuild when it changes
-    img_src.append(hashlib.sha1(open(os.path.join(paths.ASSETS, 'sister_jumpscare.npz'), 'rb').read()).hexdigest())
-    # ... and the title is set in the game's own fonts
-    fonts = os.path.join(paths.ASSETS, 'fonts')
-    for f in sorted(os.listdir(fonts)) if os.path.isdir(fonts) else []:
-        img_src.append((f, hashlib.sha1(open(os.path.join(fonts, f), 'rb').read()).hexdigest()))
-    for nm, fn in images.IMAGES.items():
+    # full-screen pictures (title, endings...): each with a palette of its own
+    images = optional('images')
+    img_src = src('noise.py', 'palette.py') + (src('images.py') if images else [])
+    # a picture may be made from any file of the game's assets/ (a font, a
+    # pre-rendered frame): they are all part of its key, the enemy's sheets aside
+    for d, _, files in sorted(os.walk(paths.ASSETS)):
+        for f in sorted(files):
+            if not (ENEMY_SHEETS and f == ENEMY_SHEETS['file']):
+                img_src.append((os.path.relpath(os.path.join(d, f), paths.ASSETS), hashlib.sha1(open(os.path.join(d, f), 'rb').read()).hexdigest()))
+    for nm, fn in (images.IMAGES.items() if images else []):
         idx, ipal = cached(('img', nm, img_src, pal.tobytes()), lambda: images.render(fn, pal))
         out.blob(f"img_{nm}", lz77.compress(idx.tobytes()))
         out.carray('u16', f"pal_{nm}", P.to_bgr555(ipal))

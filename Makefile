@@ -58,10 +58,13 @@ GSRC    := $(GAME)/src
 SRCDIRS := $(ESRC) $(GSRC)
 
 ARCH    := -mcpu=arm7tdmi -mtune=arm7tdmi -mthumb-interwork
-CBASE   := $(ARCH) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -ffreestanding -fno-strict-aliasing \
-           -fomit-frame-pointer -ffunction-sections -fdata-sections -I$(ESRC) -I$(GSRC) -I$(GEN) $(VDEFS) $(DEFS)
-CTHUMB  := $(CBASE) -mthumb
-CARM    := $(CBASE) -marm -O3 -mlong-calls -fno-tree-loop-distribute-patterns
+# (INC: the engine's sources see only the engine and the generated data; the
+# game's see their own folder too. An engine file cannot include a game's header.)
+INC      = -I$(ESRC) -I$(GEN)
+CBASE    = $(ARCH) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -ffreestanding -fno-strict-aliasing \
+           -fomit-frame-pointer -ffunction-sections -fdata-sections $(INC) $(VDEFS) $(DEFS)
+CTHUMB   = $(CBASE) -mthumb
+CARM     = $(CBASE) -marm -O3 -mlong-calls -fno-tree-loop-distribute-patterns
 ASFLAGS := $(ARCH) $(VDEFS) $(DEFS) -x assembler-with-cpp -I.
 LDFLAGS := $(ARCH) -mthumb -nostartfiles -T $(OBJ)/gba.ld -Wl,-Map,$(ELF:.elf=.map) \
            -Wl,--gc-sections -specs=nano.specs
@@ -85,6 +88,8 @@ OBJS    := $(patsubst %.c,$(OBJ)/%.o,$(CNAMES)) \
            $(patsubst %.iwram.c,$(OBJ)/%.iwram.o,$(INAMES)) \
            $(patsubst %.s,$(OBJ)/%.o,$(SNAMES))
 GENFILES := $(GEN)/assets.h $(GEN)/assets.c $(GEN)/data.s
+GAMEOBJS := $(patsubst %.iwram.c,$(OBJ)/%.iwram.o,$(patsubst %.c,$(OBJ)/%.o,$(notdir $(wildcard $(GSRC)/*.c))))
+$(GAMEOBJS): INC += -I$(GSRC)
 
 vpath %.c $(SRCDIRS) $(GEN)
 vpath %.s $(SRCDIRS) $(GEN)

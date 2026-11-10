@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // World: level loading, thin walls and doors, collision, line of sight,
 // dynamic lights.
-#include "engine.h"
+#include "game_api.h"
 #include "assets.h"
 #include "world.h"
 #include "objects.h"
 #include <string.h>
 
+EWRAM_BSS Thing g_things[MAX_THINGS];       // the level's things: the game fills and draws them
+int g_numThings;
 EWRAM_BSS Door g_doors[MAX_DOORS];
 int  g_numDoors;
 EWRAM_BSS u8 g_lightStatic[GRID_W * GRID_W] ALIGN4;
@@ -307,7 +309,7 @@ void world_door_props(void) {
             PropInst *p = &g_dynProps[n++];
             p->x = lp[j].hx; p->y = lp[j].hy; p->z = 0;
             p->angle = lp[j].ang;
-            p->model = d->kind == DOOR_DOUBLE ? MDL_LEAF_HALF : MDL_LEAF_SINGLE;
+            p->model = d->kind == DOOR_DOUBLE ? DOOR_MODEL_HALF : DOOR_MODEL_SINGLE;      // (the manifest's DOOR_MODELS)
             p->flags = 0;
             p->tex = d->leafTex;
             p->light = 0;
@@ -317,7 +319,6 @@ void world_door_props(void) {
 }
 
 // ------------------------------------------------------------- collision
-s32 isqrt32(u32 v);
 
 // push a circle out of an axis-aligned segment: vertical segments lie at
 // x = c for y in [a0, a1], horizontal ones at y = c for x in [a0, a1]
@@ -504,4 +505,45 @@ int world_los(s32 x0, s32 y0, s32 x1, s32 y1) {
         } else return 1;
     }
     return 1;
+}
+
+// ---------------------------------------------------------------- maths
+s32 isqrt32(u32 v) {
+    u32 r = 0, b = 1u << 30;
+    while (b > v) b >>= 2;
+    while (b) {
+        if (v >= r + b) { v -= r + b; r = (r >> 1) + b; }
+        else r >>= 1;
+        b >>= 2;
+    }
+    return r;
+}
+
+s32 dist_approx(s32 dx, s32 dy) {
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    if (dx < 0x1000000 && dy < 0x1000000) {
+        u32 a = dx >> 6, b = dy >> 6;
+        return isqrt32(a * a + b * b) << 6;
+    }
+    if (dx < dy) { s32 t = dx; dx = dy; dy = t; }
+    return dx + ((dy * 3) >> 3) + (dy >> 5);
+}
+
+u16 angle_to(s32 dx, s32 dy) {
+    // octant-based atan2 approximation, 0..65535
+    if (dx == 0 && dy == 0) return 0;
+    s32 ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+    while ((ax | ay) >= 0x10000) { ax >>= 1; ay >>= 1; }     // (the quotient in 32 bits; 15 good bits left)
+    s32 a;
+    if (ax >= ay) {
+        s32 t = (ay << 15) / ax;                      // tan in Q15 (0..1)
+        a = (t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15);   // atan(t)/(2pi)*65536
+    } else {
+        s32 t = (ax << 15) / ay;
+        a = 16384 - ((t * 8192 >> 15) + ((t * (32768 - t) >> 15) * 2289 >> 15));
+    }
+    if (dx < 0) a = 32768 - a;
+    if (dy < 0) a = 65536 - a;
+    return (u16)a;
 }

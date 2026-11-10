@@ -1,0 +1,2 @@
+# from power-on to standing in the room (the engine's tools start here)
+run 90
