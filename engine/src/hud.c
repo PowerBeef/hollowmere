@@ -20,7 +20,8 @@ static s16 s_timer[HL_COUNT];
 static u8  s_width[HL_COUNT];
 static u8  s_x0[HL_COUNT];
 static u8  s_on[HL_COUNT];
-EWRAM_BSS static char s_last[HL_COUNT][64];
+#define HUD_LINE_MAX 127                   // characters a line remembers (it draws 236 px at most)
+EWRAM_BSS static char s_last[HL_COUNT][HUD_LINE_MAX + 1];
 static u8  s_lastColor[HL_COUNT];
 static s16 s_battTimer;
 static u8  s_visible = 1;
@@ -69,7 +70,8 @@ static int render_line(const char *s, int color) {
 void hud_init(void) {
     memset(g_oam, 0, sizeof g_oam);
     for (int i = 0; i < 128; i++) g_oam[i].attr0 = ATTR0_HIDE;
-    for (int l = 0; l < HL_COUNT; l++) { s_timer[l] = 0; s_on[l] = 0; }
+    for (int l = 0; l < HL_COUNT; l++) { s_timer[l] = 0; s_on[l] = 0; s_last[l][0] = 0; }
+    s_visible = 1;
     s_battTimer = 0;
     s_iconTimer[0] = s_iconTimer[1] = 0;
     pal_obj(s_objpal, 0, 16);
@@ -77,11 +79,11 @@ void hud_init(void) {
 
 void hud_text(int line, const char *s, int frames, int color) {
     if (!s || !*s) { hud_clear(line); return; }
-    if (s_on[line] && s_lastColor[line] == color && !strncmp(s_last[line], s, 63)) {
+    if (s_on[line] && s_lastColor[line] == color && !strncmp(s_last[line], s, HUD_LINE_MAX)) {
         if (s_timer[line] < frames || frames == 0) s_timer[line] = frames;
         return;
     }
-    strncpy(s_last[line], s, 63); s_last[line][63] = 0;
+    strncpy(s_last[line], s, HUD_LINE_MAX); s_last[line][HUD_LINE_MAX] = 0;
     s_lastColor[line] = color;
     int x0 = render_line(s, color);
     bios_cpufastset(s_buf, OBJ_TILES + (line * LINE_TILES) * 8, LINE_TILES * 8);
@@ -91,25 +93,30 @@ void hud_text(int line, const char *s, int frames, int color) {
     s_on[line] = 1;
 }
 
+// A subtitle: one line, or two split at the space nearest the middle when it
+// is wider than 224 px, whatever its length (engine/tools/textcheck.py
+// applies the same rule to every message at build time and fails on one
+// whose halves do not fit).
 void hud_message(const char *s, int frames) {
-    // split into two lines at a space near the middle if too wide
-    char a[96], b[96];
-    int w = text_width(s);
-    if (w <= 224 || strlen(s) >= 95) {
+    EWRAM_BSS static char half[2][HUD_LINE_MAX + 1];
+    int n = strlen(s);
+    if (text_width(s) <= 224 || n < 3) {
         hud_text(HL_SUB1, s, frames, HC_WHITE);
         hud_clear(HL_SUB2);
         return;
     }
-    int n = strlen(s), best = -1;
+    int best = -1;
     for (int i = n / 2, j = n / 2; i > 0 || j < n; i--, j++) {
         if (j < n && s[j] == ' ') { best = j; break; }
         if (i > 0 && s[i] == ' ') { best = i; break; }
     }
+    int skip = best >= 0;                    // the space itself is dropped
     if (best < 0) best = n / 2;
-    memcpy(a, s, best); a[best] = 0;
-    strcpy(b, s + best + 1);
-    hud_text(HL_SUB1, a, frames, HC_WHITE);
-    hud_text(HL_SUB2, b, frames, HC_WHITE);
+    int la = best < HUD_LINE_MAX ? best : HUD_LINE_MAX;
+    memcpy(half[0], s, la); half[0][la] = 0;
+    strncpy(half[1], s + best + skip, HUD_LINE_MAX); half[1][HUD_LINE_MAX] = 0;
+    hud_text(HL_SUB1, half[0], frames, HC_WHITE);
+    hud_text(HL_SUB2, half[1], frames, HC_WHITE);
 }
 
 void hud_clear(int line) { s_on[line] = 0; s_timer[line] = 0; s_last[line][0] = 0; }
@@ -145,7 +152,7 @@ void hud_update(void) {
         if (s_on[l] && s_timer[l] > 0 && --s_timer[l] == 0) s_on[l] = 0;
         if (!s_on[l] || !s_visible) continue;
         int first = s_width[l];
-        for (int k = first; k < 8 - first + (first ? 0 : 0) && k < 8; k++) {
+        for (int k = first; k < 8 - first; k++) {
             OBJ_ATTR *a = &g_oam[o++];
             a->attr0 = (s_lineY[l] & 255) | ATTR0_WIDE;
             a->attr1 = (k * 32) | ATTR1_SIZE_32;

@@ -146,7 +146,5 @@ INLINE s32 lu_sin(u16 a) { return sin_lut[a >> 6]; }
 INLINE s32 lu_cos(u16 a) { return sin_lut[((a >> 6) + 256) & 1023]; }
 void camera_update(Camera *c);
 
-// profiling
-extern u32 g_profRender;
 
 #endif

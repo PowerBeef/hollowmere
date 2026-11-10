@@ -10,6 +10,7 @@
 #include "gfx.h"
 #include "objects.h"
 #include "ui.h"
+#include "dev.h"
 #include <string.h>
 
 EWRAM_BSS SaveState g_state;
@@ -25,12 +26,17 @@ extern int g_shakeAmt, g_shakeT, g_flashT, g_blackoutT, g_fadeTarget, g_fadeSpee
 extern int g_lookX, g_lookY, g_ambience;
 
 static int s_heartT;
+
+// ------------------------------------------------------------- test hooks
+// (the test ROM only: see dev.h and docs/TOOLS.md)
+#ifdef DEV
 volatile s32 g_debugCmd, g_debugA, g_debugB, g_debugC;
 volatile u32 g_dbgFreeze;
 u32 g_benchOut[4];
-EWRAM_BSS u32 g_pcSamples[4097];   // test harness hooks
+EWRAM_BSS u32 g_pcSamples[4097];   // the sampling profiler's buffer (crt0.s)
+u32 g_profUpd[5], g_profParts[6];
 
-#define PNOW() (((u32)REG_TM3CNT_L << 16) | REG_TM2CNT_L)
+#define PNOW() PROF_T()
 static void debug_hook(void) {
     s32 cmd = g_debugCmd;
     if (cmd <= 0) return;
@@ -93,7 +99,7 @@ static void debug_hook(void) {
         break; }
     }
 }
-static u16 s_lastKeys;
+#endif
 
 // ------------------------------------------------------------- math
 s32 isqrt32(u32 v) {
@@ -246,7 +252,6 @@ void game_load_level(int level, int fromCheckpoint) {
         if (L->resumeEvent) script_start(L->resumeEvent);
         if (g_state.objective) hud_text(HL_TOP, game_str(g_state.objective), 200, HC_GOLD);
     }
-    s_lastKeys = 0xFFFF;
 }
 
 void game_checkpoint(void) {
@@ -336,7 +341,6 @@ static void update_fx(void) {
     if (g_blackoutT > 0) g_blackoutT--;
 }
 
-u32 g_profUpd[5];
 void game_update(void) {
     extern volatile u16 g_keyPressAcc;
     u16 keys = ~REG_KEYINPUT & KEY_MASK;
@@ -344,11 +348,12 @@ void game_update(void) {
     u16 pressed = g_keyPressAcc;
     g_keyPressAcc = 0;
     REG_IME = 1;
-    s_lastKeys = keys;
+#ifdef DEV
     if (g_dbgFreeze) { debug_hook(); return; }     // test harness: the world stands still
+#endif
     g_frame++;
     g_state.playFrames++;
-    debug_hook();
+    DEV_ONLY(debug_hook();)
 
     // scripted camera look
     if (g_lookX >= 0) {
@@ -356,12 +361,12 @@ void game_update(void) {
         s16 diff = (s16)(want - g_player.angle);
         g_player.angle += diff / 8;
     }
-    u32 q0 = PNOW();
+    DEV_ONLY(u32 q0 = PNOW();)
     player_update(keys, pressed);
     player_apply_flashlight();
-    u32 q1 = PNOW();
+    DEV_ONLY(u32 q1 = PNOW();)
     creature_update();
-    u32 q2 = PNOW();
+    DEV_ONLY(u32 q2 = PNOW();)
     script_update();
     // a door never swings shut through someone standing in the doorway
     for (int i = 0; i < g_numDoors; i++) {
@@ -377,14 +382,13 @@ void game_update(void) {
     world_update_doors();
     if (!g_player.hiding) check_triggers();
     map_track();
-    u32 q3 = PNOW();
+    DEV_ONLY(u32 q3 = PNOW();)
     update_fear();
     update_fx();
     hud_update();
-    u32 q4 = PNOW();
+    DEV_ONLY(u32 q4 = PNOW();)
     snd_update_3d(g_player.x, g_player.y, g_player.angle);
-    u32 q5 = PNOW();
-    g_profUpd[0] = q1 - q0; g_profUpd[1] = q2 - q1; g_profUpd[2] = q3 - q2; g_profUpd[3] = q4 - q3; g_profUpd[4] = q5 - q4;
+    DEV_ONLY(u32 q5 = PNOW(); g_profUpd[0] = q1 - q0; g_profUpd[1] = q2 - q1; g_profUpd[2] = q3 - q2; g_profUpd[3] = q4 - q3; g_profUpd[4] = q5 - q4;)
     if (pressed & KEY_START) g_gameSignal = 100;      // pause request
 }
 
@@ -410,26 +414,27 @@ void game_build_sprites(void) {
     g_numSprites = n;
 }
 
-u32 g_profParts[6];
 void game_render(void) {
+#ifdef DEV
     u32 t0 = PNOW();
     if (g_dbgFreeze) { g_frame = g_dbgFreeze; rng_seed(g_dbgFreeze); g_lightsDirty = 1; }  // test harness: repeatable frames
+#endif
     g_cam.x = g_player.x; g_cam.y = g_player.y; g_cam.angle = g_player.angle;
     camera_update(&g_cam);
     world_update_lights(g_frame);
-    u32 t1 = PNOW();
+    DEV_ONLY(u32 t1 = PNOW();)
     creature_light();
-    u32 t2 = PNOW();
+    DEV_ONLY(u32 t2 = PNOW();)
     render_build_flash_tables();
-    u32 t3 = PNOW();
+    DEV_ONLY(u32 t3 = PNOW();)
     game_build_sprites();
     world_door_props();
-    u32 t4 = PNOW();
+    DEV_ONLY(u32 t4 = PNOW();)
     render_enter_3d();
     render_view(backbuf3d());
-    u32 t5 = PNOW();
+    DEV_ONLY(u32 t5 = PNOW();)
     fx_prepare();
-    u32 t6 = PNOW();
-    g_profParts[0] = t1 - t0; g_profParts[1] = t2 - t1; g_profParts[2] = t3 - t2;
-    g_profParts[3] = t4 - t3; g_profParts[4] = t6 - t5; g_profParts[5] = t5 - t4;
+    DEV_ONLY(u32 t6 = PNOW();
+             g_profParts[0] = t1 - t0; g_profParts[1] = t2 - t1; g_profParts[2] = t3 - t2;
+             g_profParts[3] = t4 - t3; g_profParts[4] = t6 - t5; g_profParts[5] = t5 - t4;)
 }

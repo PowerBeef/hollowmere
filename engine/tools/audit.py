@@ -6,7 +6,7 @@ furniture, pieces overlapping each other, items floating or sunk.
 
     python3 engine/tools/audit.py [level ...]
 
-Prints one line per finding. Nothing is changed."""
+Prints one line per finding and exits 1 when there are any. Nothing is changed."""
 import importlib
 import paths
 import math
@@ -262,10 +262,14 @@ def audit(ln, models):
 def main():
     models = {n: fn() for n, fn in furniture.MODELS.items()}
     lv = sys.argv[1:] or LEVELS
+    n = 0
     for ln in lv:
         for line in audit(ln, models):
             print(line)
+            n += 1
+    print(f"level audit: {'OK' if not n else '%d findings' % n}")
+    return 1 if n else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

@@ -23,6 +23,7 @@
 #include "assets.h"
 #include "render.h"
 #include "objects.h"
+#include "dev.h"
 #ifndef NOFILL
 #define NOFILL 0
 #endif
@@ -67,23 +68,17 @@ extern void pspan_pair(PSpan *s);
 extern void pspan_half(PSpan *s);
 s32 g_halfDist = 0x24000;      // faces farther than this are filled one sample per column pair
 
-u32 g_objStats[4];       // props drawn, faces drawn, columns, sprites
 u32 g_lodScale = 256;    // 256 = full detail; larger drops small faces sooner
+#ifdef DEV
+u32 g_objStats[4];       // props drawn, faces drawn, columns, sprites
 EWRAM_BSS u32 g_objT[4], g_objPix[2], g_objF[6], g_objG[4];
 EWRAM_BSS u32 g_flog[64][4]; u32 g_nflog;
 extern u32 g_frozenLog;
 EWRAM_BSS u32 g_pixCount[3];
 EWRAM_BSS u32 g_objPub[20];      // the last complete frame's counters
-#define PNOW() (((u32)REG_TM3CNT_L << 16) | REG_TM2CNT_L)
+#endif
 
 static inline s32 mul16(s32 a, s32 b) { return (s32)(((s64)a * b) >> 16); }
-
-// 16.16 row -> 12.4, clamped to what an s16 can hold
-static inline s16 clamp_row(s32 y) {
-    y >>= 12;
-    if (y > 32000) y = 32000; else if (y < -32000) y = -32000;
-    return (s16)y;
-}
 
 // final light per flashlight cone class for a face at depth f, for the cones
 // its columns can fall in
@@ -226,7 +221,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
     if (noclip) flags |= VF_NOCLIP;
     if (trap) flags |= VF_TRAP;
     vf.flags = flags;
-    g_objStats[2] += c1 - c0 + 1;
+    DEV_ONLY(g_objStats[2] += c1 - c0 + 1;)
     // a wide, low face in front of every wall and lintel in its columns, its
     // texels no smaller than half a pixel: rows (fewer, and exact along them)
 #ifndef NOVROWS
@@ -432,7 +427,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void poly_face(u8 *fb, const M
             s32 z = g_zbuf[c];
             if (z > (s32)fnear && z < (s32)ffar - 0x1800) { poly_depth_cull(p, n, c0, c1); break; }
         }
-    g_objStats[2] += c1 - c0 + 1;
+    DEV_ONLY(g_objStats[2] += c1 - c0 + 1;)
     u8 lt[NCONE];
     face_lights(lt, c0, c1, rcp16((u32)((wmin + wmax) >> 1)), fl, shade);
     PSpan sp;
@@ -458,9 +453,9 @@ u32 vface_bench(u8 *fb, int rows, int cols, int full) {
     vf.flags = VF_ONELIGHT | VF_NOCLIP | VF_NOZ;
     vf.cm0 = g_colormap + (31 << 8);
     for (int k = 0; k < NCONE; k++) vf.lt[k] = 31;
-    u32 t0 = PNOW();
+    u32 t0 = PROF_T();
     if (full) vface_pair(&vf); else vface_half(&vf);
-    return PNOW() - t0;
+    return PROF_T() - t0;
 }
 #endif
 
@@ -510,7 +505,7 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         if (fc->v[3] != 0xFF) s_vmark[fc->v[3]] = st;
     }
     if (!ncand) return;
-    u32 tx0 = PNOW();
+    DEV_ONLY(u32 tx0 = PROF_T();)
     // pass 2: transform only the vertices those faces use
     s32 hb = ((s32)pi->z - EYE_256) << 8;            // base height relative to the eye, 16.16
     const MVert *mv = m->v;
@@ -543,9 +538,9 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         while (j > 0 && s_faceKey[j - 1] < key) { s_faceKey[j] = s_faceKey[j - 1]; s_faceOrder[j] = s_faceOrder[j - 1]; j--; }
         s_faceKey[j] = key; s_faceOrder[j] = i;
     }
-    g_objT[3] += PNOW() - tx0;
+    DEV_ONLY(g_objT[3] += PROF_T() - tx0;)
     if (!nvis) return;
-    g_objStats[0]++;
+    DEV_ONLY(g_objStats[0]++;)
     s32 hd = g_halfDist;
     if (m->mflags & MF_HALF) g_halfDist = 0;
     for (int fi = 0; fi < nvis; fi++) {
@@ -556,19 +551,19 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         s32 gyw = pi->y + ((lx * so + ly * co) >> 6);
         int fl = (g_lightgrid[(((gyw >> 15) & 63) << 6) | ((gxw >> 15) & 63)] & LG_LIGHT) + pi->light;
         int shade = FF_SHADE(fc->flags);
-        g_objStats[1]++;
-        u32 tq = PNOW();
+        DEV_ONLY(g_objStats[1]++;)
+        DEV_ONLY(u32 tq = PROF_T();)
 #ifdef FACELOG
         u32 c2 = g_objStats[2];
         u32 px0 = ((volatile u32 *)0x02037000)[12];
 #endif
-        if (fc->flags & FF_VERT) { vert_face(fb, fc, tex, fl, shade); g_objT[0] += PNOW() - tq; g_objF[0]++; }
-        else { poly_face(fb, fc, fc->v[3] == 0xFF ? 3 : 4, tex, fl, shade); g_objT[1] += PNOW() - tq; g_objF[1]++; }
+        if (fc->flags & FF_VERT) { vert_face(fb, fc, tex, fl, shade); DEV_ONLY(g_objT[0] += PROF_T() - tq; g_objF[0]++;) }
+        else { poly_face(fb, fc, fc->v[3] == 0xFF ? 3 : 4, tex, fl, shade); DEV_ONLY(g_objT[1] += PROF_T() - tq; g_objF[1]++;) }
 #ifdef FACELOG
         if (g_nflog < 64 && !g_frozenLog) {
             u32 *L = g_flog[g_nflog++];
             L[0] = pi->model | (s_faceOrder[fi] << 8) | ((fc->flags & FF_VERT) << 16);
-            L[1] = PNOW() - tq; L[2] = g_objStats[2] - c2; L[3] = ((volatile u32 *)0x02037000)[12] - px0;
+            L[1] = PROF_T() - tq; L[2] = g_objStats[2] - c2; L[3] = ((volatile u32 *)0x02037000)[12] - px0;
         }
 #endif
     }
@@ -593,7 +588,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE void draw_sprite(u8 *fb, RSprite *s) 
     if (c1 <= 0 || c0 >= VIEW_W) return;
     if (c0 < 0) c0 = 0;
     if (c1 > VIEW_W) c1 = VIEW_W;
-    g_objStats[3]++;
+    DEV_ONLY(g_objStats[3]++;)
     u32 txStep = (u32)img->w * rcp16((u32)wcol);                   // texels per column 16.16
     u32 tyStep = (u32)img->h * rcp16((u32)hpx);                    // texels per row 16.16
     s32 rowScale = (s32)(((u64)(u32)hpx * rcp_tab[img->h]) >> 24);  // rows per texel 16.16

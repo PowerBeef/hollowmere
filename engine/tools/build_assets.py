@@ -13,7 +13,7 @@ import paths                    # (also puts the game's content and levels on th
 ROOT = paths.ROOT
 GEN = paths.GEN
 BIN = os.path.join(GEN, 'bin')
-CACHE = os.path.join(paths.BUILD, 'cache')
+CACHE = paths.CACHE
 
 import lz77
 import palette as P
@@ -24,6 +24,7 @@ import furniture
 import lighttables
 import levelc
 
+BINREL = os.path.relpath(BIN, ROOT).replace(os.sep, '/')    # as the assembler, run from the root, finds it
 os.makedirs(BIN, exist_ok=True)
 os.makedirs(CACHE, exist_ok=True)
 
@@ -91,7 +92,7 @@ class Out:
         if old != bytes(data):
             open(path, 'wb').write(bytes(data))
         self.s.append(f"    .section .rodata.{name}, \"a\"\n    .align {align}\n    .global {name}\n"
-                      f"{name}:\n    .incbin \"gen/bin/{name}.bin\"\n")
+                      f"{name}:\n    .incbin \"{BINREL}/{name}.bin\"\n")
         self.h.append(f"extern const u8 {name}[];   // {len(data)} bytes")
 
     def carray(self, ctype, name, values, per_line=16):

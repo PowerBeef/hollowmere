@@ -5,28 +5,28 @@ Teleports to the view, samples the CPU's program counter every 1024 cycles
 for a few frames and prints where the time goes, by function."""
 import subprocess, sys, os, struct, bisect
 import paths
+import harness
 
-out = sys.argv[1]
+if len(sys.argv) < 6:
+    sys.exit(__doc__)
+out = os.path.abspath(sys.argv[1])
 lv, x, y, d = int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5])
 frames = int(sys.argv[6]) if len(sys.argv) > 6 else 12
 _q = [int(v) for v in os.environ.get("PCQ", "147456,120,256").split(",")]
 HD, BAND, LOD = _q[:3]
 SPLIT, WHALF = (_q[3], _q[4]) if len(_q) > 4 else (0, 0)
-os.makedirs(out, exist_ok=True)
-boot = open(paths.BOOT).read()
-L = [boot, "poke32 {g_debugCmd} 5", "run 2"]
+L = harness.boot() + harness.dismiss()
 if lv:
-    L += [f"poke32 {{g_debugA}} {lv}", "poke32 {g_debugCmd} 4", "run 420", "poke32 {g_debugCmd} 5", "run 2"]
-L += [f"poke32 {{g_debugA}} {int(x*256)}", f"poke32 {{g_debugB}} {int(y*256)}",
-      f"poke32 {{g_debugC}} {int(d/360*65536) & 65535}", "poke32 {g_debugCmd} 2",
-      "poke32 {g_govOff} 1", "poke32 {g_profNoIrq} 0", "poke32 {g_lodScale} 256", f"poke32 {{g_floorSplit}} {SPLIT}", f"poke32 {{g_wallHalfLh}} {WHALF}",
+    L += harness.load_level(lv) + harness.dismiss()
+L += harness.teleport(x, y, d, settle=0) + [
+      "poke32 {g_govOff} 1", "poke32 {g_profNoIrq} 0", f"poke32 {{g_floorSplit}} {SPLIT}", f"poke32 {{g_wallHalfLh}} {WHALF}",
       f"poke32 {{g_halfDist}} {HD}", f"poke32 {{g_fullC0}} {120-BAND}", f"poke32 {{g_fullC1}} {120+BAND}", f"poke32 {{g_lodScale}} {LOD}", "run 20",
-      "poke32 {g_debugCmd} 8", f"run {frames}", "poke32 {g_debugCmd} 9", "run 1",
+      "poke32 {g_debugCmd} 8", f"run {frames}", "poke32 {g_debugCmd} 9", "run 8",
       f"dump {{g_pcSamples}} 16388 {out}/pc.bin", f"shot {out}/view.ppm"]
-open(f"{out}/p.in", 'w').write('\n'.join(L) + '\n')
-txt = subprocess.check_output(['python3', paths.tool('sym.py'), f"{out}/p.in"]).decode()
-open(f"{out}/p.txt", 'w').write(txt)
-subprocess.run([paths.HARNESS, paths.ROM, f"{out}/p.txt"], capture_output=True, text=True, timeout=600)
+try:
+    harness.run(L, out, 'pcprof', timeout=600)
+except harness.HarnessError as e:
+    sys.exit(f"pcprof.py: {e}")
 raw = open(f"{out}/pc.bin", 'rb').read()
 n = struct.unpack('<I', raw[:4])[0]
 pcs = [struct.unpack('<I', raw[4 + 4 * i:8 + 4 * i])[0] - 4 for i in range(min(n, 4096))]

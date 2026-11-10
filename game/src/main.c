@@ -10,28 +10,30 @@
 #include "hud.h"
 #include "game.h"
 #include "ui.h"
+#include "dev.h"
 
 volatile u32 g_vblanks;
 volatile u8  g_flipReq;
 volatile u8  g_dispPage, g_bgHide;
 volatile u32 g_lastFlip;
 volatile u8  g_minFrames = 3;          // 20 fps
-u8 g_quality;
-u32 g_profRaw, g_profFrame;
+u8 g_quality;               // the detail level the governor chose (0 = full)
+u32 g_profRaw;              // cycles the last render took
+#ifdef DEV
+u32 g_profFrame, g_profIrq, g_irqParts[5];
 volatile u32 g_govOff;      // test harness: hold the detail level fixed
+#endif
 
 extern int g_noteRequest, g_chapterRequest;
 
 volatile u16 g_keyPressAcc;
 static u16 s_keyPrevIrq;
 
-u32 g_profIrq;
-u32 g_irqParts[5];
 EWRAM_BSS u32 g_irqStack[256] ALIGN4;      // the interrupt handlers' stack (crt0.s)
 static inline u32 prof_read(void);
 void irq_dispatch(u32 flags) {
     if (flags & IRQ_VBLANK) {
-        u32 ta = prof_read();
+        DEV_ONLY(u32 ta = prof_read();)
         audio_vblank();
         g_vblanks++;
         u16 k = ~REG_KEYINPUT & KEY_MASK;
@@ -45,17 +47,17 @@ void irq_dispatch(u32 flags) {
             g_lastFlip = g_vblanks;
             flipped = 1;
         }
-        u32 t1 = prof_read();
+        DEV_ONLY(u32 t1 = prof_read();)
         fx_vblank(flipped);
-        u32 t2 = prof_read();
+        DEV_ONLY(u32 t2 = prof_read();)
         hud_oam_commit();
-        u32 t3 = prof_read();
+        DEV_ONLY(u32 t3 = prof_read();)
         music_tick();
-        u32 t4 = prof_read();
+        DEV_ONLY(u32 t4 = prof_read();)
         audio_mix();
-        u32 tb = prof_read();
-        g_profIrq = (g_profIrq * 7 + (tb - ta)) >> 3;
-        { extern u32 g_irqParts[5]; g_irqParts[0] = t1 - ta; g_irqParts[1] = t2 - t1; g_irqParts[2] = t3 - t2; g_irqParts[3] = t4 - t3; g_irqParts[4] = tb - t4; }
+        DEV_ONLY(u32 tb = prof_read();
+                 g_profIrq = (g_profIrq * 7 + (tb - ta)) >> 3;
+                 g_irqParts[0] = t1 - ta; g_irqParts[1] = t2 - t1; g_irqParts[2] = t3 - t2; g_irqParts[3] = t4 - t3; g_irqParts[4] = tb - t4;)
     }
 }
 
@@ -90,12 +92,15 @@ static void render_frame(void) {
     game_render();
     g_renderCount++;
     g_profRaw = prof_read();
-    g_profFrame = (g_profFrame * 7 + g_profRaw) >> 3;
+    DEV_ONLY(g_profFrame = (g_profFrame * 7 + g_profRaw) >> 3;)
     // detail governor for the 20 fps frame (3 vblanks = 842k cycles): when
     // a frame comes close to the deadline the far floor gets coarser, far
     // walls and far furniture drop to one sample per column pair and small
     // furniture faces are dropped sooner; near things keep full detail.
-    if (!g_govOff) {
+#ifdef DEV
+    if (!g_govOff)
+#endif
+    {
         // levels, cheapest-looking first: the far floor coarser (split), far
         // furniture at one sample per column pair (hd, 1/4096 tile), far
         // walls at one sample per pair (whalf: walls shorter than this) and

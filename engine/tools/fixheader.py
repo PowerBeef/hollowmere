@@ -25,12 +25,17 @@ assert len(LOGO) == 156
 
 
 def main():
+    if len(sys.argv) != 5:
+        sys.exit(__doc__)
     path, title, code, maker = sys.argv[1:5]
+    for what, v, n in (('title', title, 12), ('game code', code, 4), ('maker code', maker, 2)):
+        if not v.isascii() or len(v) > n:
+            sys.exit(f"fixheader: {what} {v!r} must be at most {n} ASCII characters")
     rom = bytearray(open(path, 'rb').read())
     rom[0x04:0xA0] = LOGO
-    rom[0xA0:0xAC] = title.encode('ascii')[:12].ljust(12, b'\0')
-    rom[0xAC:0xB0] = code.encode('ascii')[:4].ljust(4, b'\0')
-    rom[0xB0:0xB2] = maker.encode('ascii')[:2].ljust(2, b'\0')
+    rom[0xA0:0xAC] = title.encode('ascii').ljust(12, b'\0')
+    rom[0xAC:0xB0] = code.encode('ascii').ljust(4, b'\0')
+    rom[0xB0:0xB2] = maker.encode('ascii').ljust(2, b'\0')
     rom[0xB2] = 0x96
     rom[0xB3] = 0
     rom[0xB4] = 0

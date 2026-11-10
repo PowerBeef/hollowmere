@@ -66,6 +66,20 @@ rom_start:
     strlt   r3, [r1], #4
     blt     4b
 
+    @ paint the free fast RAM under the stack and the interrupt stack with
+    @ a canary: engine/tools/stackcheck.py reads how deep either one went
+    ldr     r1, =__bss_end
+    mov     r2, sp
+    ldr     r3, =0xA5A5A5A5
+6:  cmp     r1, r2
+    strlt   r3, [r1], #4
+    blt     6b
+    ldr     r1, =g_irqStack
+    add     r2, r1, #1024
+7:  cmp     r1, r2
+    strlt   r3, [r1], #4
+    blt     7b
+
     @ install interrupt handler
     ldr     r0, =isr_master
     ldr     r1, =0x03007FFC
@@ -94,7 +108,8 @@ isr_master:
     ldrh    r2, [r3, #-8]               @ BIOS IntrWait flags (0x03FFFFF8)
     orr     r2, r2, r0
     strh    r2, [r3, #-8]
-    tst     r0, #0x10                   @ timer 1: profiler sample
+#ifdef DEV
+    tst     r0, #0x10                   @ timer 1: the sampling profiler (pcprof.py)
     beq     1f
     ldr     r2, [sp, #20]               @ interrupted pc + 4 (saved by the BIOS)
     ldr     r1, =g_pcSamples
@@ -107,6 +122,7 @@ isr_master:
     bics    r0, r0, #0x10
     bxeq    lr                          @ nothing else pending
 1:
+#endif
     mrs     r2, spsr
     stmfd   sp!, {r2, lr}
     mrs     r3, cpsr

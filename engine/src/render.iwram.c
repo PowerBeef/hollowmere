@@ -9,10 +9,13 @@
 #include "engine.h"
 #include "assets.h"
 #include "render.h"
+#include "dev.h"
 
 // ---------------------------------------------------------------- state
 // g_colormap (32 light levels x 256 colours) lives in VRAM, see gba.ld
+#ifdef PIXCNT
 u32 g_castStat[8];
+#endif
 // g_zbuf: perpendicular distance of each column's solid wall (VRAM, see gba.ld)
 // g_zmax8, g_zmin8, g_cdmin8: per block of 8 columns (VRAM, see gba.ld)
 extern s32 g_zmax8[VIEW_W / 8], g_zmin8[VIEW_W / 8], g_cdmin8[VIEW_W / 8];
@@ -279,22 +282,24 @@ extern void quad_span(QuadArgs *q);
 extern int wall_quad(u8 *fb, int col, const ColHit *h);
 
 // ------------------------------------------------------------- the frame
-u32 g_profStage[4];
-#define PROF_NOW() (((u32)REG_TM3CNT_L << 16) | REG_TM2CNT_L)
-u32 g_profNoIrq;
+#ifdef DEV
+u32 g_profStage[4];          // cycles: ray casting, floors + walls, occluder pass, objects
+u32 g_profNoIrq;             // bench: render with interrupts off
+volatile u32 g_noObjects;    // bench: skip the objects
+#endif
 
-u32 g_profCast;
-volatile u32 g_noObjects;
 IWRAM_CODE void render_view(u8 *fb) {
+#ifdef DEV
     u16 ime = REG_IME;
     if (g_profNoIrq) REG_IME = 0;
+#endif
 #ifdef PIXCNT
     { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) pc[i] = 0; }
     for (int i = 0; i < 4; i++) g_castStat[i] = 0;
 #endif
-    u32 t0 = PROF_NOW();
+    DEV_ONLY(u32 t0 = PROF_T();)
     occluders_prepass();
-    u32 t1 = PROF_NOW();
+    DEV_ONLY(u32 t1 = PROF_T();)
     CastCtx k;
     k.px = g_cam.x; k.py = g_cam.y;
     k.dirX = g_cam.dirX; k.dirY = g_cam.dirY;
@@ -307,17 +312,17 @@ IWRAM_CODE void render_view(u8 *fb) {
     g_flatCtx.px64 = k.px << 6;
     g_flatCtx.py64 = k.py << 6;
     int js = g_floorSplit;
-    u32 tc = 0;
+    DEV_ONLY(u32 tc = 0;)
     // The view in groups of four columns, left to right. Rays: every even
     // column, the odd ones in between mostly interpolated on plain walls
     // (a ring of the last few hits, in IWRAM).
     ColHit ring[8];
     #define H(c) (&ring[(c) & 7])
-    u32 tq = PROF_NOW();
+    DEV_ONLY(u32 tq = PROF_T();)
     cast_column(&k, 0, H(0));
-    tc += PROF_NOW() - tq;
+    DEV_ONLY(tc += PROF_T() - tq;)
     for (int col = 0; col < VIEW_W; col += 4) {
-        tq = PROF_NOW();
+        DEV_ONLY(tq = PROF_T();)
         // every fourth column is cast; the one between two hits on the same
         // plain wall is interpolated, then the odd ones the same way
         if (col + 4 < VIEW_W) {
@@ -354,7 +359,7 @@ IWRAM_CODE void render_view(u8 *fb) {
             }
             g_zmax8[b] = mx; g_zmin8[b] = mn; g_cdmin8[b] = cd;
         }
-        tc += PROF_NOW() - tq;
+        DEV_ONLY(tc += PROF_T() - tq;)
         // floors and ceilings: one sample per 2x2 pixels near the viewer, per
         // 4x2 beyond g_floorSplit (far, small and dim), along the ray between
         // the columns sampled
@@ -412,17 +417,22 @@ IWRAM_CODE void render_view(u8 *fb) {
         for (int c = col; c < col + 4; c++) if (H(c)->nov) draw_lintels(fb, c, H(c));
     }
     #undef H
-    u32 t2 = PROF_NOW();
+    DEV_ONLY(u32 t2 = PROF_T();)
 #ifdef PIXCNT
     { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) pc[64 + i] = pc[i]; }
 #endif
     // objects, far to near
-    if (!g_noObjects) draw_objects(fb);
-    u32 t3 = PROF_NOW();
+#ifdef DEV
+    if (!g_noObjects)
+#endif
+    draw_objects(fb);
+    DEV_ONLY(u32 t3 = PROF_T();)
 #ifdef PIXCNT
     { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) { pc[32 + i] = pc[i]; pc[96 + i] = pc[64 + i]; }
       for (int i = 0; i < 4; i++) pc[124 + i] = g_castStat[i]; }
 #endif
+#ifdef DEV
     g_profStage[0] = tc; g_profStage[1] = t2 - t1 - tc; g_profStage[2] = t1 - t0; g_profStage[3] = t3 - t2;
     REG_IME = ime;
+#endif
 }

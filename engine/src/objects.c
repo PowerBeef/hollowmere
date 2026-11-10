@@ -5,6 +5,7 @@
 #include "assets.h"
 #include "render.h"
 #include "objects.h"
+#include "dev.h"
 
 EWRAM_BSS PropInst g_props[MAX_PROPS];
 int g_numProps;
@@ -15,14 +16,14 @@ int g_numDynProps;
 #define FARCULL  (12 << 16)
 
 typedef struct { s32 depth, r; s16 idx; u8 kind, pad; } DrawItem;
-u32 g_frozenLog;
 extern s32 g_zmax8[VIEW_W / 8];
 #define s_zmax8 g_zmax8
 EWRAM_BSS static DrawItem s_items[MAX_PROPS + MAX_DYNPROPS + MAX_SPRITES];
 
+#ifdef DEV
+u32 g_frozenLog;
 extern u32 g_objStats[4], g_objT[4], g_objPix[2], g_objF[6], g_objG[4], g_objPub[20], g_pixCount[3];
-#define PNOW() (((u32)REG_TM3CNT_L << 16) | REG_TM2CNT_L)
-static inline s32 mul16(s32 a, s32 b) { return (s32)(((s64)a * b) >> 16); }
+#endif
 
 // (a * q) >> 14 for a 16.16 value a (|a| < 128 tiles) and a Q14 factor q,
 // in 32-bit arithmetic (Thumb has no long multiply)
@@ -68,10 +69,12 @@ static int prop_visible(const PropInst *pi, s32 *pf, s32 *pr) {
 
 void draw_objects(u8 *fb) {
     int n = 0;
+#ifdef DEV
     { extern u32 g_nflog; if (!g_frozenLog) g_nflog = 0; }
     g_objStats[0] = g_objStats[1] = g_objStats[2] = g_objStats[3] = 0;
     g_objT[0] = g_objT[1] = g_objT[2] = g_objT[3] = 0; g_objPix[0] = g_objPix[1] = 0; for (int q = 0; q < 6; q++) g_objF[q] = 0; for (int q = 0; q < 4; q++) g_objG[q] = 0;
-    u32 t0 = PNOW();
+    u32 t0 = PROF_T();
+#endif
     for (int i = 0; i < g_numProps + g_numDynProps; i++) {
         const PropInst *pi = i < g_numProps ? &g_props[i] : &g_dynProps[i - g_numProps];
         if (pi->flags & PIF_HIDDEN) continue;
@@ -94,7 +97,7 @@ void draw_objects(u8 *fb) {
         DrawItem *it = &s_items[n++];
         it->depth = depth; it->idx = i; it->kind = 2;
     }
-    g_objT[2] = PNOW() - t0;
+    DEV_ONLY(g_objT[2] = PROF_T() - t0;)
     // far to near
     for (int i = 1; i < n; i++) {
         DrawItem t = s_items[i];
@@ -111,7 +114,8 @@ void draw_objects(u8 *fb) {
             draw_prop(fb, pi, it->depth, it->r);
         }
     }
-    g_objStats[3] = PNOW() - t0;
+#ifdef DEV
+    g_objStats[3] = PROF_T() - t0;
     u32 *o = g_objPub;
     o[0] = g_objStats[3]; o[1] = g_objStats[0]; o[2] = g_objStats[1]; o[3] = g_objStats[2];
     o[4] = g_objT[0]; o[5] = g_objT[1]; o[6] = g_objT[2]; o[7] = g_objT[3];
@@ -119,6 +123,7 @@ void draw_objects(u8 *fb) {
     o[17] = g_objG[0]; o[18] = g_objG[1]; o[19] = g_objG[2]; o[13] = g_objG[3] << 24 | (o[13] & 0xFFFFFF);
     o[14] = g_pixCount[0]; o[15] = g_pixCount[1]; o[16] = g_pixCount[2];
     g_pixCount[0] = g_pixCount[1] = g_pixCount[2] = 0;
+#endif
 }
 
 // ---------------------------------------------------------------- occluders
