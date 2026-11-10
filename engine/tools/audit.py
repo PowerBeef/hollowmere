@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Layout audit for Hollowmere's levels: furniture through walls, blocked
 doors and door leaves swinging into furniture, pictures hidden behind
 furniture, pieces overlapping each other, items floating or sunk.

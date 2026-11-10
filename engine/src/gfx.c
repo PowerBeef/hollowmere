@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include <string.h>
 // Canvas, text and palette helpers
 #include "gfx.h"

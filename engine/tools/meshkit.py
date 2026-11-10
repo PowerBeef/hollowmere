@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Low-poly mesh construction for Hollowmere's 3D props.
 
 Units are tiles (1 tile = 1.5 m; rooms are 2 tiles tall, the eye is at 1).

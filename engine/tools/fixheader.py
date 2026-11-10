@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Write a valid GBA cartridge header (boot logo, title, game code, complement)
-and pad the ROM. Usage: fixheader.py rom.gba TITLE GAMECODE MAKER"""
+and pad the ROM. Usage: fixheader.py rom.gba TITLE GAMECODE MAKER
+
+The 156 logo bytes are the header field every GBA BIOS compares against its
+own copy before it starts a cartridge: a ROM without them runs in emulators
+but not on a console. They are data required for interoperability, not part
+of this project's work. MAKER is the two-character licensee code; homebrew
+uses "00" ("01" is Nintendo's own)."""
 import sys
 
 LOGO = bytes([

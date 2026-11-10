@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Chapter II: the cellars. Three fuses for the generator, then the service lift."""
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'engine', 'tools'))   # mapkit

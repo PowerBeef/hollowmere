@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Hollowmere: what the engine's toolchain builds for this game.
 
 LEVELS are level modules in game/content/levels, in play order (the

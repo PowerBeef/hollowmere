@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Player: movement, flashlight, stamina, interaction, hiding
 #include "game.h"
 #include "world.h"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Chapter IV: the attic chapel. Take the Night Sister's lantern.
 
 The way through: a woman's voice counting, from the far end of the attic;

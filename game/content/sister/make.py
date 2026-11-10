@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Render every frame of the Night Sister to game/assets/sister.npz.
 
     python3 game/content/sister/make.py [--ss 4] [--only walk,chase,...] [--preview]

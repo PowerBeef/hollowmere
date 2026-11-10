@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Mansion wall textures: 64 wide x 128 tall (one tile wide, two tall),
 column-major in ROM. Row 0 is the ceiling line, row 128 the floor; a height
 of h tiles is row 128 - 64h. Generated composites:

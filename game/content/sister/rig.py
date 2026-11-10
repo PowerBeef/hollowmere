@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Poses for the Night Sister: joint positions and frames from a handful of
 body parameters, with two-bone IK for the limbs (see core.py for layout).
 Metres; z up; she faces +y and her right is +x."""

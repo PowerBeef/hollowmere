@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Expand {symbol} / {symbol+off} in a harness script using the ELF symbol table."""
 import re, subprocess, sys, os
 import paths

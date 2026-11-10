@@ -139,8 +139,9 @@ Optional: `make harness` (needs `libmgba-dev`) for the test tools; SciPy for sou
 
 ## License
 
-- **The engine** — everything outside `game/` (`engine/`, the `Makefile`, the documentation text) — is released under the [MIT License](LICENSE). Use it for your own GBA games.
-- **The game** — `game/` (Hollowmere's code, levels, story, models, textures, sounds, music, characters) and the screenshots in `docs/media/` — is **all rights reserved**; see [game/LICENSE](game/LICENSE). You may build and play it from this repository, but not redistribute it or reuse its content.
+Everything in this repository is released under the [MIT License](LICENSE): the engine, the toolchain, the documentation, and the game itself — Hollowmere's code, levels, story, models, textures, sounds, music and characters, and the screenshots in `docs/media/`. Use the engine for your own GBA games, and take whatever is useful from the game.
+
+The title screen is set in TeX Gyre Bonum, which ships in `game/assets/fonts` under the GUST Font License.
 
 ## Credits
 

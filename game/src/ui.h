@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef UI_H
 #define UI_H
 #include "gba.h"

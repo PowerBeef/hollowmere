@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Flashlight beam and night-vision base tables (consumed by the engine)."""
 import numpy as np
 

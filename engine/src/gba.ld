@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Hollowmere GBA linker script */
 OUTPUT_FORMAT("elf32-littlearm")
 OUTPUT_ARCH(arm)

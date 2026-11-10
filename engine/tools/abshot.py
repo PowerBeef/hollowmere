@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Deterministic screenshots for A/B renderer comparisons:
 abshot.py ROM ELF OUTDIR [--only a,b] [poke lines with @ for spaces...]
 The game logic is frozen (g_dbgFreeze) after each level loads, so each view

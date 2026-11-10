@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Where everything lives, for the engine's tools.
 
 The engine's toolchain (this folder) builds and tests one game at a time; the

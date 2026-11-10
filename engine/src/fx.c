@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hardware display effects
 #include "fx.h"
 #include "engine.h"

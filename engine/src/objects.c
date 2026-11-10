@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere object renderer driver (Thumb, ROM): culls props and sprites,
 // sorts them far to near and hands each one to the IWRAM renderer.
 #include "engine.h"

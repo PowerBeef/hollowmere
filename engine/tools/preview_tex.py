@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Render a contact sheet of all textures (debug)."""
 import sys
 import paths

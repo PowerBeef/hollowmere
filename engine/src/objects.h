@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // 3D props (furniture, door leaves) and their data formats
 #ifndef OBJECTS_H
 #define OBJECTS_H

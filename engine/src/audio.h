@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere audio: 8-voice stereo software mixer on Direct Sound A (L) / B (R)
 #ifndef AUDIO_H
 #define AUDIO_H

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Decor and item sprites for Hollowmere."""
 import numpy as np
 from spritekit import Canvas, preview

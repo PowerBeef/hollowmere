@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Take screenshots from a list of camera poses: shots.py OUTDIR name x y deg [name x y deg ...]
 Writes OUTDIR/sheet.png (contact sheet, 2x) and prints profiling counters."""
 import subprocess, sys, os

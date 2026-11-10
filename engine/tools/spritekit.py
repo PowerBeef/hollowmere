@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Supersampled sprite drawing toolkit. Draw at SS x resolution with
 shaded primitives, then downsample to a binary-alpha sprite."""
 import numpy as np

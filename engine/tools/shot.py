@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Screenshots at chosen spots: shot.py OUTDIR LEVEL:X:Y:DEG[:name] ...  (full quality, 3x PNG)"""
 import subprocess, sys, os
 import paths

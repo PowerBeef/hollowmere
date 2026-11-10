@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Hollowmere sound effects, all synthesized. Each entry returns
 (float array in [-1,1], loop_start or None)."""
 import numpy as np

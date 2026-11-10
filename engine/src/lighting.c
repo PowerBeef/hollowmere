@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Render tables and flashlight light tables (ROM, thumb)
 #include "engine.h"
 #include "assets.h"

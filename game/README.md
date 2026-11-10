@@ -9,4 +9,4 @@ The flagship game of the Hollowmere Engine: a first-person survival-horror game 
 | `assets/` | the Night Sister's pre-rendered frames (`sister.npz`, `sister_jumpscare.npz`), regenerated with `python3 game/content/sister/make.py` (needs Numba, takes a while) |
 | `tests/` | `boot.txt`, the harness input from power-on to the first level |
 
-Hollowmere's code and content are **all rights reserved**; see [LICENSE](LICENSE). The engine around it is MIT-licensed.
+Hollowmere's code and content are released under the [MIT License](../LICENSE), like the engine around it.

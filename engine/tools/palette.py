@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Palette, quantization and light colormaps.
 
 Palette layout (game palette):

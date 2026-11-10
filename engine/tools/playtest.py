@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Walks the critical path of the whole game with debug teleports and A presses,
 taking screenshots and printing progress (level, keys, fuses, signal).
 usage: playtest.py OUTDIR"""

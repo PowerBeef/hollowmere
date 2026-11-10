@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // 2D graphics: canvas (Mode 4 8bpp), text, palettes, display effects
 #ifndef GFX_H
 #define GFX_H

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Battery-backed SRAM save
 #include "game.h"
 #include <string.h>

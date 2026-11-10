@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The Night Sister: perception, pathfinding and behaviour
 #include "game.h"
 #include "world.h"

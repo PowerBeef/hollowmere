@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #ifndef WORLD_H
 #define WORLD_H
 #include "engine.h"

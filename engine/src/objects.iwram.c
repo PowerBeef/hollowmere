@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere object renderer (ARM, IWRAM): 3D props drawn as textured
 // polygons, plus billboard sprites, depth-sorted together over the world.
 //

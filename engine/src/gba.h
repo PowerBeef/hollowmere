@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere - minimal GBA hardware definitions
 #ifndef GBA_H
 #define GBA_H

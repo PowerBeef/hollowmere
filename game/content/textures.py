@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Procedural 64x64 textures for Hollowmere. Each generator returns an
 (64, 64, 3) float RGB array in [0,1]. Walls tile horizontally, floors and
 ceilings tile in both directions."""

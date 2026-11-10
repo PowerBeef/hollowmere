@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Chapter I: the ground floor of Hollowmere House.
 
 The way through: a music box plays under the floor, and following it leads to

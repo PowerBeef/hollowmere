@@ -1,3 +1,4 @@
+@ SPDX-License-Identifier: MIT
 @ Hollowmere startup code
     .section .crt0, "ax"
     .arm

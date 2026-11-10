@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Stack high-water mark during gameplay rendering: stackcheck.py OUTDIR
 Runs the benchmark views (interrupts on) after clearing the free IWRAM
 between the end of .bss and the live stack, then reports the deepest use."""

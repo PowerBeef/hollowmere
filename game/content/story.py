@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """All fixed text in Hollowmere. Order matters for ranges (STR_X_0 .. n)."""
 
 INTRO = [

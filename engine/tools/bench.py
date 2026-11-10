@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Fixed-view benchmark across all floors: bench.py OUTDIR [--lod N] [--only name,name]
 Prints per view the render stage costs (cycles) and writes OUTDIR/bench.png.
 20 fps = 3 vblanks = 842k cycles per frame (minus interrupts and game updates)."""

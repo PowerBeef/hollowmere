@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Frame rate with the detail governor on: fps.py OUTDIR [--turn] [--only a,b]
 For each benchmark view: settle, then count rendered frames over 180 vblanks.
 --turn holds LEFT while measuring (the view sweeps around the room)."""

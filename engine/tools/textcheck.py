@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Checks that every in-game message, sign and objective fits the HUD:
 messages wrap to at most two lines of 236 px, objectives to one."""
 import sys, os, importlib

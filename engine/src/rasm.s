@@ -1,3 +1,4 @@
+@ SPDX-License-Identifier: MIT
 @ Hollowmere hand-written ARM inner loops (IWRAM)
 @
 @ The 3D view is a mode-4 page (240 x 160 bytes, 16-bit writes only). The

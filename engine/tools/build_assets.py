@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Hollowmere asset build: generates gen/*.c, gen/*.h, gen/*.s and gen/bin/."""
 import os
 import sys

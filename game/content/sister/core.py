@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The Night Sister, offline: a signed-distance model of the creature and a
 ray marcher that renders it lit by her own lantern (numba).
 

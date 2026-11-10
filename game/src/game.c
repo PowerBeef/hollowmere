@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Game glue: level state, update loop, rendering, checkpoints, fear
 #include "game.h"
 #include "render.h"

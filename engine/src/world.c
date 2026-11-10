@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // World: level loading, thin walls and doors, collision, line of sight,
 // dynamic lights.
 #include "engine.h"

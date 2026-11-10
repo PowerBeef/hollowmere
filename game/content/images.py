@@ -1,12 +1,16 @@
+# SPDX-License-Identifier: MIT
 """Full-screen 240x160 images with their own 248-colour palettes:
 title (the island at night), jumpscare (the Night Sister's face), dawn."""
+import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+import paths
 from noise import fbm, value_noise
 import palette as P
 
 W, H = 240, 160
-FONT_SERIF = '/usr/share/texmf/fonts/opentype/public/tex-gyre/texgyrebonum-bold.otf'
+# TeX Gyre Bonum Bold, vendored (GUST Font License, see game/assets/fonts)
+FONT_SERIF = os.path.join(paths.ASSETS, 'fonts', 'texgyrebonum-bold.otf')
 IMAGES = {}
 
 

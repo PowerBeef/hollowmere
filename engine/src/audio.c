@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere audio API, DMA plumbing, positional audio and note sequencer
 #include "audio.h"
 #include "assets.h"

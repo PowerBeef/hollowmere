@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // internal fx tables shared between fx.c and fxprep.c
 #ifndef FXINT_H
 #define FXINT_H

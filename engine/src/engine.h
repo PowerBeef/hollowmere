@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere engine shared declarations
 #ifndef ENGINE_H
 #define ENGINE_H

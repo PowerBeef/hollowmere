@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Render waveform + spectrogram contact sheet for all sounds (debug)."""
 import sys
 import paths

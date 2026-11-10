@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Level event scripts: a tiny bytecode VM with a few concurrent threads
 #include "game.h"
 #include "world.h"

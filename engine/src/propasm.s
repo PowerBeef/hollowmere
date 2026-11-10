@@ -1,3 +1,4 @@
+@ SPDX-License-Identifier: MIT
 @ Hollowmere prop and sprite fills (ARM, IWRAM), full resolution mode 4.
     .data
     .align 2

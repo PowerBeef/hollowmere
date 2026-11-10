@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Helpers for writing Hollowmere floor plans in code instead of ASCII art.
 
     P = Plan(14, 11)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 import os
 import sys, time
 from rig import Pose

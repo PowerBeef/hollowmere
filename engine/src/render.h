@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Renderer internals shared by render.iwram.c and objects.iwram.c
 #ifndef RENDER_H
 #define RENDER_H

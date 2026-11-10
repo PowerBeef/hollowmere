@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Cameras and output for the Night Sister renders."""
 import math
 import time

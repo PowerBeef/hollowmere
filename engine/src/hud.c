@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // HUD drawn with hardware sprites (text rendered into 4bpp OBJ tiles)
 #include "hud.h"
 #include "gfx.h"

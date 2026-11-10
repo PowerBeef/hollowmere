@@ -1,3 +1,4 @@
+@ SPDX-License-Identifier: MIT
 @ Hollowmere mixer inner loop (ARM, IWRAM)
 @ Packed stereo: each accumulator word holds L in the low half and R in the
 @ high half; one MLA by (vl | vr << 16) mixes a sample into both channels.

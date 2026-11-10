@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Headless mGBA test harness for Hollowmere.
 // Reads commands from a script file (or stdin):
 //   hold KEYS          set held keys (e.g. "hold UP|A", "hold -" for none)

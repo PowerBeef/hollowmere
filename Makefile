@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Hollowmere Engine + Hollowmere (the flagship game)
 #
 #   make assets     generate gen/ from the game's content (engine/tools/build_assets.py)
@@ -44,12 +45,13 @@ vpath %.s $(SRCDIRS) $(GEN)
 TARGET     := hollowmere
 GAME_TITLE := HOLLOWMERE
 GAME_CODE  := HLWE
+MAKER_CODE := 00
 
 all: $(TARGET).gba
 
 $(TARGET).gba: $(BUILD)/$(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
-	python3 engine/tools/fixheader.py $@ $(GAME_TITLE) $(GAME_CODE) 01
+	python3 engine/tools/fixheader.py $@ $(GAME_TITLE) $(GAME_CODE) $(MAKER_CODE)
 
 $(BUILD)/$(TARGET).elf: $(OBJS) $(ESRC)/gba.ld
 	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lc -lgcc

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere - main loop and game state machine
 #include "gba.h"
 #include "engine.h"

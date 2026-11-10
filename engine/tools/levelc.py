@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Level compiler for Hollowmere's thin-wall maps.
 
 A level module draws its floor plan as ASCII on a (2W+1) x (2H+1) grid:

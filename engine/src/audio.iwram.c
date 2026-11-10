@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere software mixer (ARM, IWRAM). Called from the VBlank IRQ.
 #include "audio.h"
 

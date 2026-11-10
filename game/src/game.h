@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere game state and module interfaces
 #ifndef GAME_H
 #define GAME_H

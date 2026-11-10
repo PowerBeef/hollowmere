@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Textures for 3D props: 64x64, stored column-major in ROM.
 Tiled materials repeat every 64 texels (one tile). "Decal" textures cover a
 whole face (u 0..64 across, v 0..64 down)."""

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Run shots.py and print a compact profile table (cycles; 30 fps = 561k per frame)."""
 import subprocess, sys
 import paths

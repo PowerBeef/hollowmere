@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Top-down plan of a level: rooms, walls, doors, arches and windows, the
 furniture's footprints, items, lights, triggers, the patrol route and the start.
 

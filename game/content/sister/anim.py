@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The Night Sister's animations as Poses: walk and chase cycles (phase 0..1,
 right heel strike at 0), standing idle, searching with the lantern held
 up, kneeling at prayer with the lantern on the floor, and the lunge."""

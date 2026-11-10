@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Tileable procedural noise and drawing helpers for texture generation.
 All images are float numpy arrays in [0,1], shape (H, W) or (H, W, 3)."""
 import numpy as np

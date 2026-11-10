@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Compiler for Hollowmere level event scripts -> bytecode (see engine/src/script.c)."""
 
 OPS = ['end', 'wait', 'sound', 'sound3d', 'msg', 'objective', 'door', 'light', 'creature', 'shake',

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Hollowmere's furniture library: low-poly 3D models for the manor.
 
 Conventions: units are tiles (1 tile = 1.5 m, rooms are 2 tiles tall).

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """GBA BIOS-compatible LZ77 (type 0x10) compressor.
 Matches always use displacement >= 2 so output is safe for the VRAM
 (16-bit write) decompressor as well as the WRAM one."""

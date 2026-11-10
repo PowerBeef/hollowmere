@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Menus, notes, title, intro, chapter cards, death and ending screens
 #include "ui.h"
 #include "gfx.h"

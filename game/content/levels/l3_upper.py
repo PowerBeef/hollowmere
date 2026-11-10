@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Chapter III: the upper floor, the family bedrooms turned into wards.
 
 The way through: the lift opens into the linen room; stepping into the gallery,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Original note sequences for Hollowmere (music box lullaby etc.).
 Times are in frames (60 Hz). Notes are MIDI numbers."""
 

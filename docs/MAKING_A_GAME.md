@@ -9,7 +9,7 @@ make          # compile engine/src + game/src + gen/ into the ROM
 
 The asset build caches its expensive steps in `build/cache`, keyed on the source of the generators, so after the first run only what you changed is regenerated.
 
-The examples below come from Hollowmere. Its content is all rights reserved, so write your own rather than copying it.
+The examples below come from Hollowmere, which is MIT-licensed like the engine: copy from it freely.
 
 ## The manifest
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Small synthesis toolkit for Hollowmere's procedurally generated audio."""
 import numpy as np
 from scipy.signal import butter, lfilter, sosfilt

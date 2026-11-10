@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The map screen, after the old survival-horror blueprints: the rooms of
 // this floor you have been in, red while they still hold something to take
 // and blue once they are cleared, the room you are in blinking, the doors

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hollowmere world renderer: thin-wall raycaster with see-through doorways,
 // per-room floor/ceiling materials and colormap lighting, full resolution.
 // Compiled as ARM code and placed in IWRAM.

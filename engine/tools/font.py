@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """Hollowmere proportional pixel font (9 px cell: caps rows 0-6, descenders 7-8)."""
 
 GLYPHS = {

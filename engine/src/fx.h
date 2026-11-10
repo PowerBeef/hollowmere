@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Hardware display effects: affine BG2 (bob/shake/roll/zoom), HDMA wave
 // distortion, window vignette, fades, mosaic.
 #ifndef FX_H

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Sampling profiler: pcprof.py OUTDIR LEVEL X Y DEG [frames]
 Teleports to the view, samples the CPU's program counter every 1024 cycles
 for a few frames and prints where the time goes, by function."""

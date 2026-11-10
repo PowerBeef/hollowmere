@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // fx table builder (per frame, ROM)
 #include "fx.h"
 #include "engine.h"

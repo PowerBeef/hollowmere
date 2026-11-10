@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Level definition structures (generated data lives in gen/levels.c)
 #ifndef LEVELDEF_H
 #define LEVELDEF_H
