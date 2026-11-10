@@ -70,7 +70,7 @@ An alternative layout (B for the light, R to run, SELECT for the map) is in the 
 
 ## The engine
 
-The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-bit bitmap mode, entirely in software, at a steady 20 frames per second. Everything that runs per pixel is ARM code in the 32 KB of fast internal RAM.
+The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-bit bitmap mode, entirely in software, at 20 frames per second in all but its heaviest views. Everything that runs per pixel is ARM code in the 32 KB of fast internal RAM.
 
 **World rendering**
 - Thin-wall raycaster: walls sit on the edges of a grid, so rooms share walls the way real buildings do, with doorways, arches, windows and lintels you can see through
