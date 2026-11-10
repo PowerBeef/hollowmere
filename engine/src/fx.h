@@ -21,6 +21,7 @@ typedef struct {
     u8  letterbox;   // rows hidden at top/bottom
     u8  mode3d;      // 1 = gameplay view (HDMA active)
     u8  slits;       // hiding-in-locker view
+    u8  bars;        // the cinema bars over a 2D screen too (they hide the 3D view's tables)
 } FxState;
 
 extern FxState g_fx;
@@ -28,6 +29,7 @@ extern FxState g_fx;
 void fx_init(void);
 void fx_reset(void);
 void fx_prepare(void);   // build tables for the next presented frame (main loop)
+void fx_fade_view(int to); // fade the 3D frame on screen to `to` (0..16) without drawing a new one
 void fx_vblank(int flipped); // in VBlank IRQ
 
 #endif

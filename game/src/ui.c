@@ -46,6 +46,7 @@ void ui_fade_out(int speed) {
         g_fx.fade++;
         fx_prepare();
     }
+    vsync();            // the last step is on screen: the caller may change the palette
 }
 
 void ui_fade_in(int speed) {
@@ -59,10 +60,17 @@ void ui_fade_in(int speed) {
 
 static void wait_frames(int n) { while (n--) vsync(); }
 
+// a plain 2D screen: none of the 3D view's movement or framing
+void ui_plain_fx(void) {
+    g_fx.mode3d = 0;
+    g_fx.vignette = 0; g_fx.wave = 0; g_fx.bobY = 0; g_fx.offX = g_fx.offY = 0; g_fx.roll = 0; g_fx.zoom = 256;
+    g_fx.slits = 0; g_fx.bars = 0;
+}
+
 // --------------------------------------------------------------- text
 // draws a full-screen text page with optional typewriter reveal
 void ui_text_screen(const char *text, int typewriter) {
-    char buf[600];
+    EWRAM_BSS static char buf[600];
     int n = strlen(text);
     if (n > 599) n = 599;
     int lines = text_count_lines(200, text);
@@ -113,8 +121,8 @@ int ui_title(void) {
     int hasSave = save_exists();
     int sel = hasSave ? 1 : 0;
     const char *items[3] = { "NEW GAME", "CONTINUE", "OPTIONS" };
-    // rain drops as sprites: one 8x8 streak tile at OBJ tile 1000
-    u32 *tile = (u32 *)(0x06010000 + 1000 * 32);
+    // rain drops as sprites: one 8x8 streak tile
+    u32 *tile = (u32 *)(0x06010000 + OBJ_TILE_FREE * 32);
     for (int r = 0; r < 8; r++) tile[r] = (r < 6) ? (0x7u << ((r & 1) * 4)) : 0;
     static const u16 rpal[16] = { 0, 0, 0, 0, 0, 0, 0, RGB15(10, 12, 15) };
     pal_obj(rpal, 16, 16);
@@ -150,9 +158,9 @@ int ui_title(void) {
             d->y += d->vy; d->x -= 1;
             if (d->y > 160) { d->y = -8; d->x = rng_next() % 260; }
             if (d->x < -8) d->x += 248;
-            g_oam[i].attr0 = (d->y & 255) | ATTR0_TALL | ATTR0_BLEND;
+            g_oam[i].attr0 = (d->y & 255) | ATTR0_SQUARE | ATTR0_BLEND;
             g_oam[i].attr1 = (d->x & 511) | ATTR1_SIZE_8;
-            g_oam[i].attr2 = 1000 | ATTR2_PAL(1) | ATTR2_PRIO(0);
+            g_oam[i].attr2 = OBJ_TILE_FREE | ATTR2_PAL(1) | ATTR2_PRIO(0);
         }
         // the window light flickers (palette index 247 is its glow)
         MEM_PAL[247] = pal_bright(((t >> 3) % 23 == 0 || (t % 97) < 3) ? RGB15(8, 6, 2) : pal_title[247]);
@@ -163,7 +171,12 @@ int ui_title(void) {
         if (p & KEY_DOWN) { do { sel = (sel + 1) % 3; } while (sel == 1 && !hasSave); snd_play(SND_UI_MOVE, 80, 0, 0, 200); }
         if (p & (KEY_A | KEY_START)) {
             snd_play(SND_UI_SELECT, 110, 0, 0, 200);
-            if (sel == 2) { ui_options(0); pal_bg(pal_title, 248); continue; }
+            if (sel == 2) {
+                for (int i = 0; i < 40; i++) g_oam[i].attr0 = ATTR0_HIDE;       // no rain over the options box
+                ui_options(0);
+                pal_bg(pal_title, 248);
+                continue;
+            }
             result = sel == 0 ? TITLE_NEW : TITLE_CONTINUE;
         }
     }
@@ -256,8 +269,9 @@ void ui_note(int id) {
     int perPage = 10;
     int pages = (lines + perPage - 1) / perPage;
     int page = 0;
-    g_fx.mode3d = 0;
-    g_fx.vignette = 0; g_fx.wave = 0; g_fx.bobY = 0; g_fx.offX = g_fx.offY = 0; g_fx.slits = 0;
+    FxState fxWas = g_fx;
+    int hudWas = hud_visible();
+    ui_plain_fx();
     hud_set_visible(0); hud_update();
     int dirty = 1;
     while (1) {
@@ -285,7 +299,8 @@ void ui_note(int id) {
         if (p & (KEY_B | KEY_START)) break;
     }
     snd_play(SND_PAPER, 70, 0, 5000, 100);
-    hud_set_visible(1);
+    g_fx = fxWas;
+    hud_set_visible(hudWas);
 }
 
 static void notes_journal(void) {
@@ -366,7 +381,7 @@ void ui_options(int fromGame) {
         if ((p & KEY_A) && sel < 3) d = 1;
         if (d) {
             if (sel == 0) { g_settings.brightness = (g_settings.brightness + 3 + d) % 3; g_brightness = g_settings.brightness; pal_bg_game(); }
-            if (sel == 1) { int v = g_settings.volume + d; if (v < 0) v = 0; if (v > 4) v = 4; g_settings.volume = v; g_masterVol = 16 + v * 12; }
+            if (sel == 1) { int v = g_settings.volume + d; if (v < 0) v = 0; if (v > 4) v = 4; g_settings.volume = v; g_masterVol = (16 + v * 12) >> (fromGame ? 1 : 0); }
             if (sel == 2) g_settings.controls ^= 1;
             snd_play(SND_UI_SELECT, 70, 0, 0, 100);
         }
@@ -384,7 +399,12 @@ int ui_pause(void) {
     u8 *scene = g_scene;
     memcpy(scene, g_canvas, 240 * 160);
     g_sceneValid = 1;
-    g_fx.mode3d = 0;
+    // the menu is a plain screen: the view's effects (the wardrobe slats, a
+    // fade or flash in progress, the fear wobble) wait until it closes
+    FxState fxWas = g_fx;
+    int hudWas = hud_visible();
+    ui_plain_fx();
+    g_fx.fade = 0; g_fx.white = 0; g_fx.mosaic = 0;
     hud_set_visible(0); hud_update();
     int sel = 0;
     static const int items[5] = { STR_UI_RESUME, STR_UI_MAP, STR_UI_JOURNAL, STR_UI_OPTIONS, STR_UI_QUIT };
@@ -445,7 +465,10 @@ int ui_pause(void) {
         }
     }
     g_masterVol = 16 + g_settings.volume * 12;
-    hud_set_visible(1);
+    if (result == PAUSE_QUIT) ui_fade_out(2);      // (as the plain screen it is)
+    g_fx = fxWas;
+    if (result == PAUSE_QUIT) g_fx.fade = 16;
+    hud_set_visible(hudWas);
     g_sceneValid = 0;
     return result;
 }
@@ -455,16 +478,16 @@ void ui_jumpscare(void) {
     snd_stop_all();
     snd_play(SND_JUMPSCARE, 255, 0, 0, 255);
     snd_play(SND_STINGER, 200, 0, 0, 254);
-    pal_bg(pal_jumpscare, 248);
     canvas_blit_lz(img_jumpscare);
     fx_reset();
     g_fx.mode3d = 0;
-    g_fx.white = 12;
+    g_fx.white = 16;            // the first frame is pure white: the palette changes behind it
     vram_leave_3d();
     u16 *dst = backbuf();
     bios_cpufastset(g_canvas, dst, 240 * 160 / 4);
     fx_prepare();
     flip_and_wait();
+    pal_bg(pal_jumpscare, 248);
     for (int t = 0; t < 72; t++) {
         g_fx.zoom = 256 + t * 2 + (t < 10 ? t * 4 : 40);
         g_fx.offX = (s32)(rng_next() % 1537) - 768;
@@ -495,6 +518,7 @@ void ui_death(void) {
     snd_play(SND_BRAAM, 140, 0, 0, 200);
     ui_fade_in(4);
     wait_frames(60);
+    ui_keys_pressed();          // nothing pressed before now counts
     for (int t = 0;; t++) {
         canvas_rect(0, 100, 240, 12, 0);
         if ((t >> 5) & 1) text_draw_center(100, game_str(STR_UI_CONTINUE), C_GREY, 0);
@@ -575,7 +599,9 @@ void ui_ending(int allNotes) {
     while (*a) buf[n++] = *a++;
     u32 secs = g_state.playFrames / 60;
     u32 h = secs / 3600, m = (secs / 60) % 60, s = secs % 60;
-    buf[n++] = '0' + h; buf[n++] = ':'; buf[n++] = '0' + m / 10; buf[n++] = '0' + m % 10;
+    if (h > 99) h = 99;
+    if (h >= 10) buf[n++] = '0' + h / 10;
+    buf[n++] = '0' + h % 10; buf[n++] = ':'; buf[n++] = '0' + m / 10; buf[n++] = '0' + m % 10;
     buf[n++] = ':'; buf[n++] = '0' + s / 10; buf[n++] = '0' + s % 10; buf[n] = 0;
     text_draw_center(98, buf, C_GREY, 0);
     present2d();

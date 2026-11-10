@@ -29,10 +29,10 @@
 #endif
 
 
-#define NEAR     0x1800          // near plane, 0.09 tile
-#define FARCULL  (12 << 16)
-#define MAXV     128
-#define MAXF     64
+#define NEAR     OBJ_NEAR
+#define FARCULL  OBJ_FARCULL
+#define MAXV     OBJ_MAXV
+#define MAXF     OBJ_MAXF
 
 // per-prop transformed vertices (camera space, 16.16) and their projections,
 // in spare VRAM (see gba.ld)
@@ -70,7 +70,7 @@ s32 g_halfDist = 0x24000;      // faces farther than this are filled one sample 
 
 u32 g_lodScale = 256;    // 256 = full detail; larger drops small faces sooner
 #ifdef DEV
-u32 g_objStats[4];       // props drawn, faces drawn, columns, sprites
+EWRAM_BSS u32 g_objStats[4];       // props drawn, faces drawn, columns, sprites
 EWRAM_BSS u32 g_objT[4], g_objPix[2], g_objF[6], g_objG[4];
 EWRAM_BSS u32 g_flog[64][4]; u32 g_nflog;
 extern u32 g_frozenLog;
@@ -79,6 +79,15 @@ EWRAM_BSS u32 g_objPub[20];      // the last complete frame's counters
 #endif
 
 static inline s32 mul16(s32 a, s32 b) { return (s32)(((s64)a * b) >> 16); }
+
+// num / den as 16.16 for 0 <= num < den, with a 32-bit division (the 64-bit
+// one costs several times the cycles and 190 bytes of stack, here where the
+// stack is deepest): both are scaled down until num fits 16 bits, which
+// leaves den at least 15 significant bits.
+static inline s32 frac16(u32 num, u32 den) {
+    while (num >= 0x10000) { num >>= 1; den >>= 1; }
+    return (s32)((num << 16) / den);
+}
 
 // final light per flashlight cone class for a face at depth f, for the cones
 // its columns can fall in
@@ -146,7 +155,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
         // clip the near end against the near plane
         s32 ra = s_vr[ia], rb = s_vr[ib];
         s32 zba = s_vz[ia], zbb = s_vz[ib], zta = s_vz[ita], ztb = s_vz[itb];
-        s32 t = (s32)(((s64)(NEAR - (fa < NEAR ? fa : fb_)) << 16) / (fa < NEAR ? fb_ - fa : fa - fb_));
+        s32 t = frac16((u32)(NEAR - (fa < NEAR ? fa : fb_)), (u32)(fa < NEAR ? fb_ - fa : fa - fb_));
         if (fa < NEAR) {
             ra += mul16(rb - ra, t); zba += mul16(zbb - zba, t); zta += mul16(ztb - zta, t);
             ua += mul16(ub - ua, t); fa = NEAR;
@@ -219,6 +228,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
     }
     if (noz) flags |= VF_NOZ;
     if (noclip) flags |= VF_NOCLIP;
+    else if (g_multiAny) clip_for_depth(c0, c1, (s32)fm);
     if (trap) flags |= VF_TRAP;
     vf.flags = flags;
     DEV_ONLY(g_objStats[2] += c1 - c0 + 1;)
@@ -356,7 +366,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void poly_face(u8 *fb, const M
             int ina = a->f >= NEAR, inb = b->f >= NEAR;
             if (ina) out[no++] = *a;
             if (ina != inb) {
-                s32 t = (s32)(((s64)(NEAR - a->f) << 16) / (b->f - a->f));
+                s32 t = ina ? frac16((u32)(a->f - NEAR), (u32)(a->f - b->f)) : frac16((u32)(NEAR - a->f), (u32)(b->f - a->f));
                 CV *o = &out[no++];
                 o->f = NEAR;
                 o->r = a->r + mul16(b->r - a->r, t);
@@ -428,6 +438,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void poly_face(u8 *fb, const M
             if (z > (s32)fnear && z < (s32)ffar - 0x1800) { poly_depth_cull(p, n, c0, c1); break; }
         }
     DEV_ONLY(g_objStats[2] += c1 - c0 + 1;)
+    if (g_multiAny) clip_for_depth(c0, c1, (s32)((fnear + ffar) >> 1));
     u8 lt[NCONE];
     face_lights(lt, c0, c1, rcp16((u32)((wmin + wmax) >> 1)), fl, shade);
     PSpan sp;
@@ -464,23 +475,11 @@ extern u16 g_vmark[MAXV];          // vertex used by this prop (stamp), in VRAM
 #define s_vmark g_vmark
 static u16 s_stamp;
 
-// the model to draw for a prop whose centre is at depth fc: its far version
-// beyond the far distance (fixed, so the governor's level changes never swap
-// models under a still camera)
-static inline const Model *model_lod(const Model *m, s32 fc) {
-    if (m->far && fc > 0 && ((u32)fc >> 13) > m->farDist) return &models[m->far - 1];
-    return m;
-}
-
 IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
     const Model *m = &models[pi->model];
     u16 rel = (u16)(pi->angle - g_cam.angle);
     s32 ca = lu_cos(rel), sa = lu_sin(rel);
-    if (m->far) {
-        // distance to the centre, about: depth + half the lateral offset
-        s32 rc = r0 + ((m->cx * sa + m->cy * ca) >> 6);
-        m = model_lod(m, f0 + ((m->cx * ca - m->cy * sa) >> 6) + ((rc < 0 ? -rc : rc) >> 1));
-    }
+    if (m->far) m = model_lod(m, prop_centre_depth(m, f0, r0, ca, sa));
     int nv = m->nv, nf = m->nf;
     if (nv > MAXV || nf > MAXF) return;
     // camera position in model space (1/256 tile) for back-face culling
@@ -489,7 +488,9 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
     s32 cmx = (s32)(((s64)wx * co + (s64)wy * so) >> 22);
     s32 cmy = (s32)(((s64)wy * co - (s64)wx * so) >> 22);
     s32 cmz = EYE_256 - pi->z;
-    u32 lodd = ((u32)f0 >> 13) * g_lodScale >> 8;     // distance in 1/8 tiles, scaled by quality
+    // distance in 1/8 tiles, scaled by the detail level (an origin behind
+    // the camera plane, with part of the prop still in front, is at zero)
+    u32 lodd = f0 > 0 ? ((u32)f0 >> 13) * g_lodScale >> 8 : 0;
     // pass 1: faces turned towards the camera and big enough at this distance
     if (++s_stamp == 0) { for (int i = 0; i < MAXV; i++) s_vmark[i] = 0; s_stamp = 1; }
     u16 st = s_stamp;
@@ -497,7 +498,7 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
     int ncand = 0;
     for (int i = 0; i < nf; i++) {
         const MFace *fc = &mf[i];
-        if (fc->lod < lodd) continue;
+        if (fc->lod < lodd && fc->lod != 255) continue;      // (255: always drawn)
         s32 dot = fc->n[0] * cmx + fc->n[1] * cmy + fc->n[2] * cmz - fc->d;
         if (dot <= 0 && !(fc->flags & FF_2SIDED)) continue;
         s_faceOrder[ncand++] = i;
@@ -598,6 +599,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE void draw_sprite(u8 *fb, RSprite *s) 
     u32 gl = g_lightgrid[(gy << 6) | gx] & LG_LIGHT;
     u32 boost = s->lightBoost;
     if (s->flags & SPR_OWNLIGHT) { gl = boost; boost = 0; }    // lit by her own lantern: a floor, not the grid
+    if (g_multiAny) clip_for_depth(c0, c1 - 1, depth);
     // far (or the lowest detail): column pairs whose two columns agree are
     // drawn from the first one's texels
     int pairs = depth >= g_halfDist;

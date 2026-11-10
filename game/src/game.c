@@ -15,6 +15,19 @@
 
 EWRAM_BSS SaveState g_state;
 EWRAM_BSS SaveState g_checkpoint;
+
+// The test scripts read these by offset (game/tests/hm.py): moving a field
+// means changing it there too.
+#include <stddef.h>
+_Static_assert(offsetof(SaveState, level) == 4 && offsetof(SaveState, objective) == 6 && offsetof(SaveState, keys) == 12 &&
+               offsetof(SaveState, fuses) == 14 && offsetof(SaveState, fusesPlaced) == 15 && offsetof(SaveState, flashOn) == 20 &&
+               offsetof(SaveState, deaths) == 22 && offsetof(SaveState, trigFired) == 56 && offsetof(SaveState, flags) == 144 &&
+               offsetof(SaveState, lightLevel) == 152, "SaveState layout: update game/tests/hm.py");
+_Static_assert(offsetof(Creature, x) == 4 && offsetof(Creature, y) == 8 && offsetof(Creature, timer) == 34, "Creature layout: update game/tests/hm.py");
+_Static_assert(offsetof(Player, hiding) == 16 && offsetof(Player, frozen) == 37, "Player layout: update game/tests/hm.py");
+_Static_assert(offsetof(FxState, slits) == 22, "FxState layout: update game/tests/hm.py");
+_Static_assert(offsetof(Settings, controls) == 2, "Settings layout: update game/tests/hm.py");
+_Static_assert(sizeof(Thing) == 16 && offsetof(Thing, flags) == 10 && MAX_THINGS == 112, "Thing layout: update game/tests/hm.py");
 u8 g_hasCheckpoint;
 EWRAM_BSS Thing g_things[MAX_THINGS];
 int g_numThings;
@@ -26,15 +39,17 @@ extern int g_shakeAmt, g_shakeT, g_flashT, g_blackoutT, g_fadeTarget, g_fadeSpee
 extern int g_lookX, g_lookY, g_ambience;
 
 static int s_heartT;
+static u32 s_trigInside;            // triggers the player stood in last tick
+static u8 s_pendingEv[8];           // events waiting for a free script thread
 
 // ------------------------------------------------------------- test hooks
 // (the test ROM only: see dev.h and docs/TOOLS.md)
 #ifdef DEV
 volatile s32 g_debugCmd, g_debugA, g_debugB, g_debugC;
 volatile u32 g_dbgFreeze;
-u32 g_benchOut[4];
+EWRAM_BSS u32 g_benchOut[4];
 EWRAM_BSS u32 g_pcSamples[4097];   // the sampling profiler's buffer (crt0.s)
-u32 g_profUpd[5], g_profParts[6];
+EWRAM_BSS u32 g_profUpd[5], g_profParts[6];     // (the test ROM's counters stay out of the fast RAM the stack needs)
 
 #define PNOW() PROF_T()
 static void debug_hook(void) {
@@ -229,6 +244,8 @@ void game_load_level(int level, int fromCheckpoint) {
     g_lightsDirty = 1;
     creature_init(g_state.creatureMode);
     script_reset();
+    s_trigInside = 0;
+    memset(s_pendingEv, 0, sizeof s_pendingEv);
     fx_reset();
     g_fx.mode3d = 1;
     g_fx.letterbox = 1;      // cinema bars: rows VIS0..VIS1 show the view
@@ -245,10 +262,15 @@ void game_load_level(int level, int fromCheckpoint) {
     if (L->ambience) g_ambience = snd_play(L->ambience, 110, 0, 0, 255);
     g_gameSignal = GS_PLAY;
     if (!fromCheckpoint) {
+        // (the checkpoint holds the start event at its first step: restoring
+        // it plays the level's opening again)
         if (L->startEvent) script_start(L->startEvent);
         game_checkpoint();
     } else {
-        // the level's "resume" event restarts its ambient loops and lures
+        // The scripts go on from where the checkpoint caught them. What a
+        // checkpoint does not hold (the enemy, music) the level's "resume"
+        // event puts back.
+        script_load(&g_state.script);
         if (L->resumeEvent) script_start(L->resumeEvent);
         if (g_state.objective) hud_text(HL_TOP, game_str(g_state.objective), 200, HC_GOLD);
     }
@@ -257,6 +279,7 @@ void game_load_level(int level, int fromCheckpoint) {
 void game_checkpoint(void) {
     g_state.px = g_player.x; g_state.py = g_player.y; g_state.pangle = g_player.angle;
     if (g_player.hiding) { g_state.px = g_player.outX; g_state.py = g_player.outY; }
+    script_save(&g_state.script);
     memcpy(&g_checkpoint, &g_state, sizeof g_state);
     g_hasCheckpoint = 1;
     save_write(&g_checkpoint);
@@ -275,16 +298,35 @@ void game_restore_checkpoint(void) {
 }
 
 // ------------------------------------------------------------- update
+// A trigger fires when the player steps into its cells: once ever, or (once
+// = 0) on every entry. If no script thread is free it stays armed and fires
+// when one is.
 static void check_triggers(void) {
     int px = g_player.x >> 16, py = g_player.y >> 16;
-    for (int i = 0; i < g_level->numTrigs; i++) {
+    u32 inside = 0;
+    for (int i = 0; i < g_level->numTrigs && i < 32; i++) {
         const TriggerDef *t = &g_level->trigs[i];
         if (px < t->x0 || px > t->x1 || py < t->y0 || py > t->y1) continue;
         if ((t->flags & TRIGF_ONCE) && ((g_state.trigFired[i >> 3] >> (i & 7)) & 1)) continue;
         if (t->needFlag && script_flag(t->needFlag - 1) == t->needNot) continue;   // not yet (or no longer)
+        if ((s_trigInside >> i) & 1) { inside |= 1u << i; continue; }              // still standing in it
+        if (!script_start(t->event)) continue;
+        inside |= 1u << i;
         g_state.trigFired[i >> 3] |= 1 << (i & 7);
-        script_start(t->event);
     }
+    s_trigInside = inside;
+}
+
+// Start an event that must not be lost (an item was taken, a note read):
+// when every script thread is busy it waits its turn.
+void game_event(int ev) {
+    if (!ev || script_start(ev)) return;
+    for (unsigned i = 0; i < sizeof s_pendingEv; i++)
+        if (!s_pendingEv[i]) { s_pendingEv[i] = ev; return; }
+}
+static void pending_events(void) {
+    for (unsigned i = 0; i < sizeof s_pendingEv; i++)
+        if (s_pendingEv[i] && script_start(s_pendingEv[i])) s_pendingEv[i] = 0;
 }
 
 static void update_fear(void) {
@@ -367,6 +409,7 @@ void game_update(void) {
     DEV_ONLY(u32 q1 = PNOW();)
     creature_update();
     DEV_ONLY(u32 q2 = PNOW();)
+    pending_events();
     script_update();
     // a door never swings shut through someone standing in the doorway
     for (int i = 0; i < g_numDoors; i++) {
@@ -389,7 +432,8 @@ void game_update(void) {
     DEV_ONLY(u32 q4 = PNOW();)
     snd_update_3d(g_player.x, g_player.y, g_player.angle);
     DEV_ONLY(u32 q5 = PNOW(); g_profUpd[0] = q1 - q0; g_profUpd[1] = q2 - q1; g_profUpd[2] = q3 - q2; g_profUpd[3] = q4 - q3; g_profUpd[4] = q5 - q4;)
-    if (pressed & KEY_START) g_gameSignal = 100;      // pause request
+    // pause, unless this tick already ended the level or the player
+    if ((pressed & KEY_START) && g_gameSignal == GS_PLAY) g_gameSignal = GS_PAUSE;
 }
 
 // ------------------------------------------------------------- render

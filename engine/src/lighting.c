@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "assets.h"
 #include "gfx.h"
+#include "fx.h"
 
 extern s16 g_camX[VIEW_W];
 extern u16 g_rowDist2[NPAIR_F];
@@ -47,6 +48,14 @@ EWRAM_BSS u8 g_colormapSrc[8192] ALIGN4;
 // its colour map in (see gba.ld): put it back before the next 3D frame.
 void render_enter_3d(void) {
     if (g_vram3d) return;
+    // The page on screen was drawn by a menu at full height, and the tables
+    // go into rows of it: close the cinema bars over it first (one vblank).
+    FxState keep = g_fx;
+    g_fx.mode3d = 0; g_fx.bars = 1;
+    g_fx.bobY = g_fx.offX = g_fx.offY = 0; g_fx.roll = 0; g_fx.zoom = 256; g_fx.wave = 0; g_fx.vignette = 0; g_fx.slits = 0;
+    fx_prepare();
+    vsync();
+    g_fx = keep;
     bios_cpufastset(g_colormapSrc, g_colormap, 8192 / 4);
     render_column_tables();
     g_vram3d = 1;

@@ -304,11 +304,12 @@ void ui_map(void) {
         if (r < 32) v.items |= 1u << r;
     }
 
+    int hudWas = hud_visible();
+    FxState fxWas = g_fx;
     hud_set_visible(0); hud_update();
     snd_play(SND_PAPER, 90, 0, 4200, 120);
-    // fade whatever is showing (the view keeps its cinema bars: the rows
-    // outside them hold the renderer's tables)
-    while (g_fx.fade < 16) { vsync(); g_fx.fade++; fx_prepare(); }
+    // fade whatever is showing, then swap the palette behind the black
+    if (g_fx.mode3d) fx_fade_view(16); else ui_fade_out(1);
     g_fx.mode3d = 0;
     g_fx.vignette = 0; g_fx.wave = 0; g_fx.bobY = 0; g_fx.offX = g_fx.offY = 0; g_fx.slits = 0;
     g_fx.roll = 0; g_fx.mosaic = 0; g_fx.white = 0;
@@ -327,5 +328,8 @@ void ui_map(void) {
     snd_play(SND_UI_BACK, 70, 0, 0, 100);
     ui_fade_out(1);
     pal_bg_game();
-    hud_set_visible(1);
+    // back to the caller as it was, faded out (it fades its own screen in)
+    fxWas.fade = 16;
+    g_fx = fxWas;
+    hud_set_visible(hudWas);
 }

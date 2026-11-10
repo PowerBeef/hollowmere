@@ -132,9 +132,6 @@ EVENTS = {
         ('objective', "Find a way out. Read the note by the stairs."),
         ('label', 'done'),
     ],
-    'resume': [
-        ('start', 'drips'),
-    ],
     'scrawl': [
         ('wait', 10),
         ('flag', 'l2_scrawl'),

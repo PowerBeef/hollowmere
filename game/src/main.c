@@ -20,7 +20,8 @@ volatile u8  g_minFrames = 3;          // 20 fps
 u8 g_quality;               // the detail level the governor chose (0 = full)
 u32 g_profRaw;              // cycles the last render took
 #ifdef DEV
-u32 g_profFrame, g_profIrq, g_irqParts[5];
+u32 g_profFrame, g_profIrq;
+EWRAM_BSS u32 g_irqParts[5];
 volatile u32 g_govOff;      // test harness: hold the detail level fixed
 #endif
 
@@ -256,9 +257,9 @@ static void play(void) {
             last = g_vblanks;
         }
         switch (g_gameSignal) {
-        case 100:
+        case GS_PAUSE:
             g_gameSignal = GS_PLAY;
-            if (ui_pause() == PAUSE_QUIT) { ui_fade_out(2); snd_stop_all(); return; }
+            if (ui_pause() == PAUSE_QUIT) { snd_stop_all(); return; }
             g_fx.mode3d = 1;
             g_keyPressAcc = 0;
             last = g_vblanks;
@@ -273,9 +274,9 @@ static void play(void) {
             break;
         case GS_DEAD:
             death_sequence();
-            hud_set_visible(1);
             game_restore_checkpoint();
             pal_bg_game();
+            g_keyPressAcc = 0;          // nothing pressed during the death screens carries over
             fade_in_game();
             last = g_vblanks;
             break;
@@ -283,6 +284,7 @@ static void play(void) {
             level_transition(g_nextLevel);
             if (g_gameSignal == GS_ENDING) break;
             pal_bg_game();
+            g_keyPressAcc = 0;          // nor during the chapter card
             fade_in_game();
             last = g_vblanks;
             break;

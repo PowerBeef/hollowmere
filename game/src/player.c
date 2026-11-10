@@ -17,19 +17,25 @@ Target g_target;
 #define STRAFE_SPEED 1300
 #define TURN_MAX   470
 #define STAMINA_MAX 320
+#define RUN_NOISE  (5 << 16)   // how far a running step is heard (16.16 tiles)
 
 extern int g_blackoutT;
 extern int g_noteRequest;
 
+// SELECT on the default controls: a tap works the light (on release), a
+// hold opens the map
+static u8 s_selHeld, s_selUsed;
+
 void player_init(s32 x, s32 y, u16 angle) {
     Player *p = &g_player;
+    s_selHeld = s_selUsed = 0;
+    g_listenerMuffle = 256;
     p->x = x; p->y = y; p->angle = angle;
     p->turnVel = 0;
     p->stamina = STAMINA_MAX;
     p->running = p->exhausted = 0;
     p->hiding = 0;
     p->stride = 0; p->stepIdx = 0;
-    p->noise = 0;
     p->frozen = 0;
     p->bob = 0; p->bobPhase = 0; p->speed = 0;
     p->breathHandle = -1;
@@ -235,7 +241,7 @@ static void interact(void) {
         default:
             snd_play(SND_PICKUP, 150, 0, 0, 160);
         }
-        if (t->event) script_start(t->event);
+        game_event(t->event);
         break; }
     case TGT_DOOR: {
         int idx = g_target.idx;
@@ -286,11 +292,12 @@ static void interact(void) {
         switch (it->type) {
         case INTER_LOCKER: hide_enter(g_target.idx); break;
         case INTER_SIGN: game_message(it->param | (it->strHi << 8), 220); break;
-        default: script_start(it->param); break;
+        default: if (!script_running(it->param)) script_start(it->param); break;     // (not twice at once)
         }
         break; }
     case TGT_CREATURE:
-        script_start(g_level->startEvent + 1);   // finale event follows the start event
+        // the finale event follows the start event
+        if (!script_running(g_level->startEvent + 1)) script_start(g_level->startEvent + 1);
         break;
     }
 }
@@ -322,7 +329,6 @@ void player_update(u16 keys, u16 pressed) {
     const u16 K_RUN = g_settings.controls ? KEY_R : KEY_B;
     // the flashlight, and the map: SELECT opens it, or with SELECT on the
     // light, holding SELECT does (a tap still works the light, on release)
-    static u8 s_selHeld, s_selUsed;
     int light = 0;
     if (g_settings.controls) {
         light = (pressed & KEY_B) != 0;
@@ -366,8 +372,8 @@ void player_update(u16 keys, u16 pressed) {
         if (a < -5500) a = -5500;
         p->angle = p->hideBaseAngle + a;
         g_fx.slits = 1;
-        p->noise = 0;
-        if ((pressed & (KEY_A | KEY_B)) && !p->frozen) player_hide_exit();
+        // out with A, or B where B is not the light
+        if ((pressed & (g_settings.controls ? KEY_A : (KEY_A | KEY_B))) && !p->frozen) player_hide_exit();
         hud_text(HL_PROMPT, game_str(STR_P_LEAVE), 2, HC_GREY);
         return;
     }
@@ -375,7 +381,6 @@ void player_update(u16 keys, u16 pressed) {
     if (p->frozen) {
         p->speed = 0;
         p->turnVel = 0;
-        p->noise = 0;
         hud_clear(HL_PROMPT);
         return;
     }
@@ -438,10 +443,10 @@ void player_update(u16 keys, u16 pressed) {
             p->stepIdx++;
             int vol = p->running ? 120 : 62;
             snd_play(SND_STEP0 + (p->stepIdx % 3), vol, (p->stepIdx & 1) ? -20 : 20, 3900 + (rng_next() & 511), 60);
+            // a running footfall carries: she hears it five tiles off, three
+            // through a wall (walking is quiet)
+            if (p->running) game_noise(p->x, p->y, RUN_NOISE);
         }
-        p->noise = p->running ? (8 << 16) : 0x28000;
-    } else {
-        p->noise = 0;
     }
     s32 amp = p->running ? 640 : 380;
     s32 target = moved > 400 ? (lu_sin((u16)(p->bobPhase * 2)) * amp) >> 14 : 0;

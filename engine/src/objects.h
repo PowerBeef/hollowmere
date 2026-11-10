@@ -64,4 +64,28 @@ extern PropInst g_dynProps[MAX_DYNPROPS];   // rebuilt every frame (door leaves)
 extern int g_numDynProps;
 IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0);
 
+// ------------------------------------------------- shared by the two halves
+// (objects.c culls, sorts and marks occluders; objects.iwram.c draws: both
+// must agree on these, or a prop is marked as covering a wall and then drawn
+// as a different model, or not at all)
+#define OBJ_NEAR     0x1800          // near plane, 0.09 tile
+#define OBJ_FARCULL  (12 << 16)
+#define OBJ_MAXV     128             // vertices and faces a model may have
+#define OBJ_MAXF     64
+
+// the model to draw for a prop whose centre is at depth fc: its far version
+// beyond the far distance (fixed, so the governor's level changes never swap
+// models under a still camera)
+static inline const Model *model_lod(const Model *m, s32 fc) {
+    if (m->far && fc > 0 && ((u32)fc >> 13) > m->farDist) return &models[m->far - 1];
+    return m;
+}
+
+// the depth of a prop's centre, about: its origin's depth f0 and lateral
+// offset r0, moved by the centre's offset, plus half the lateral distance
+static inline s32 prop_centre_depth(const Model *m, s32 f0, s32 r0, s32 ca, s32 sa) {
+    s32 rc = r0 + ((m->cx * sa + m->cy * ca) >> 6);
+    return f0 + ((m->cx * ca - m->cy * sa) >> 6) + ((rc < 0 ? -rc : rc) >> 1);
+}
+
 #endif

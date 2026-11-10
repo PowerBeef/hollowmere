@@ -122,6 +122,7 @@ void hud_message(const char *s, int frames) {
 void hud_clear(int line) { s_on[line] = 0; s_timer[line] = 0; s_last[line][0] = 0; }
 
 void hud_set_visible(int on) { s_visible = on; }
+int  hud_visible(void) { return s_visible; }
 
 void hud_battery(int permille, int frames) {
     // 32x16 icon: battery outline with 5 bars

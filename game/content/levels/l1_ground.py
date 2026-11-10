@@ -165,15 +165,6 @@ EVENTS = {
         ('objective', "Follow the music."),
         ('label', 'done'),
     ],
-    'resume': [
-        ('start', 'ambient'),
-        ('if_flag', 'l1_key', 'phone'),
-        ('start', 'musicbox'),
-        ('end',),
-        ('label', 'phone'),
-        ('wait', 240),
-        ('start', 'phone'),
-    ],
     'ambient': [
         ('label', 'top'),
         ('wait', 360),

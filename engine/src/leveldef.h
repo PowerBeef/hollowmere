@@ -120,6 +120,7 @@ typedef struct {
     const TriggerDef *trigs;  u8 numTrigs;
     const PathNode *patrol;   u8 numPatrol;
     const u8 *const *events;  u8 numEvents;
+    const u16 *eventLen;         // bytes of each event's script
     u8  startEvent;
     u16 startX, startY, startAngle;   // 1/256 tile, angle 0..65535
     u8  levelId;

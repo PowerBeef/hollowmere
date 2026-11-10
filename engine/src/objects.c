@@ -12,10 +12,11 @@ int g_numProps;
 EWRAM_BSS PropInst g_dynProps[MAX_DYNPROPS];
 int g_numDynProps;
 
-#define NEAR     0x1800
-#define FARCULL  (12 << 16)
+#define NEAR     OBJ_NEAR
+#define FARCULL  OBJ_FARCULL
 
-typedef struct { s32 depth, r; s16 idx; u8 kind, pad; } DrawItem;
+// depth: what the item is sorted by (a prop: its centre); f, r: a prop's origin in camera space
+typedef struct { s32 depth, f, r; s16 idx; u8 kind, pad; } DrawItem;
 extern s32 g_zmax8[VIEW_W / 8];
 #define s_zmax8 g_zmax8
 EWRAM_BSS static DrawItem s_items[MAX_PROPS + MAX_DYNPROPS + MAX_SPRITES];
@@ -51,8 +52,13 @@ static int prop_visible(const PropInst *pi, s32 *pf, s32 *pr) {
         // columns of the bounding circle: r/f * COLK, with w = 1/f in 16.16
         // (in 64 bits: a big prop just beyond its radius, the hall stair
         // seen from three tiles, overflows 32 and was culled outright)
+        // An edge of the circle's bounding box is widest on screen at the
+        // near depth when it is on the far side of the view axis from the
+        // other edge, at the far depth when it is between them.
         s64 kw = (s64)(w >> 6) * COLK;
-        s64 xl = ((s64)((r - rad) >> 6) * kw) >> 20, xr = ((s64)((r + rad) >> 6) * kw) >> 20;
+        s64 kf = (s64)((s32)rcp16((u32)(f + rad)) >> 6) * COLK;
+        s64 xl = ((s64)((r - rad) >> 6) * (r - rad >= 0 ? kf : kw)) >> 20;
+        s64 xr = ((s64)((r + rad) >> 6) * (r + rad >= 0 ? kw : kf)) >> 20;
         int cl = xl < -VIEW_W ? -VIEW_W : xl > VIEW_W ? VIEW_W : VIEW_CX + (int)xl;
         int cr = xr < -VIEW_W ? -VIEW_W : xr > VIEW_W ? VIEW_W : VIEW_CX + (int)xr + 1;
         if (cl < 0) cl = 0;
@@ -81,8 +87,12 @@ void draw_objects(u8 *fb) {
         s32 f, r;
         if (!prop_visible(pi, &f, &r)) continue;
         DrawItem *it = &s_items[n++];
-        it->depth = f; it->r = r; it->idx = i; it->kind = 0;
+        const Model *m = &models[pi->model];
+        u16 rel = (u16)(pi->angle - g_cam.angle);
+        it->depth = f + ((m->cx * lu_cos(rel) - m->cy * lu_sin(rel)) >> 6);
+        it->f = f; it->r = r; it->idx = i; it->kind = 0;
     }
+    int nprops = n;
     for (int i = 0; i < g_numSprites; i++) {
         RSprite *s = &g_sprites[i];
         if (s->flags & SPR_HIDDEN) continue;
@@ -96,6 +106,19 @@ void draw_objects(u8 *fb) {
         s->dist = depth;
         DrawItem *it = &s_items[n++];
         it->depth = depth; it->idx = i; it->kind = 2;
+        // A sprite that stands on a prop (a note on a table, a candle on the
+        // altar, someone on a rug) is drawn after it, wherever the prop's
+        // centre is: the prop's top would paint over it otherwise.
+        for (int k = 0; k < nprops; k++) {
+            const DrawItem *ip = &s_items[k];
+            const PropInst *pi = ip->idx < g_numProps ? &g_props[ip->idx] : &g_dynProps[ip->idx - g_numProps];
+            const Model *m = &models[pi->model];
+            s32 rad = (s32)m->radius << 8;
+            s32 px = s->x - pi->x, py = s->y - pi->y;
+            if (px > rad || px < -rad || py > rad || py < -rad) continue;
+            if (s->zoff + 24 < pi->z + m->zmax) continue;          // beside it, not on it
+            if (it->depth >= ip->depth) it->depth = ip->depth - 1;
+        }
     }
     DEV_ONLY(g_objT[2] = PROF_T() - t0;)
     // far to near
@@ -111,7 +134,7 @@ void draw_objects(u8 *fb) {
         else {
             int k = it->idx;
             const PropInst *pi = k < g_numProps ? &g_props[k] : &g_dynProps[k - g_numProps];
-            draw_prop(fb, pi, it->depth, it->r);
+            draw_prop(fb, pi, it->f, it->r);
         }
     }
 #ifdef DEV
@@ -134,10 +157,6 @@ extern s16 g_covT[VIEW_W], g_covB[VIEW_W];
 extern s32 g_covF[VIEW_W];
 extern void occ_face(const PropInst *pi, const MFace *fc, const MVert *mv, s32 f0, s32 r0, s32 ca, s32 sa, s32 hb);
 extern u32 g_lodScale;
-static const Model *model_lod(const Model *m, s32 fc) {
-    if (m->far && fc > 0 && ((u32)fc >> 13) > m->farDist) return &models[m->far - 1];
-    return m;
-}
 
 void occluders_prepass(void) {
     // (covT and covB are adjacent: one fill clears both)
@@ -155,11 +174,10 @@ void occluders_prepass(void) {
         s32 r0 = mulq14(dy, g_cam.dirX) - mulq14(dx, g_cam.dirY);
         if (m->far) {
             u16 rl = (u16)(pi->angle - g_cam.angle);
-            s32 cl = lu_cos(rl), sl = lu_sin(rl);
-            s32 rc = r0 + ((m->cx * sl + m->cy * cl) >> 6);
-            m = model_lod(m, f0 + ((m->cx * cl - m->cy * sl) >> 6) + ((rc < 0 ? -rc : rc) >> 1));
+            m = model_lod(m, prop_centre_depth(m, f0, r0, lu_cos(rl), lu_sin(rl)));
             if (!m->nocc) continue;
         }
+        if (m->nv > OBJ_MAXV || m->nf > OBJ_MAXF) continue;           // (draw_prop will not draw it)
         s32 rad = (s32)m->radius << 8;
         if (f0 - rad < 0x4000 || f0 - rad > (5 << 16)) continue;     // far faces cover little
         s32 ar = r0 < 0 ? -r0 : r0;
@@ -181,6 +199,25 @@ void occluders_prepass(void) {
     }
 }
 
+
+// ------------------------------------------------------------- lintels
+// An object at this depth is about to be drawn in columns c0..c1: where a
+// column looks through several openings, cut the object off at the lowest
+// lintel of the ones nearer than it (see render.h). Rare: only views through
+// two or three doorways in a row have such columns.
+void clip_for_depth(int c0, int c1, s32 depth) {
+    for (int b = c0 >> 3; b <= c1 >> 3; b++) {
+        if (!g_multi8[b]) continue;
+        int e = b * 8 + 7;
+        if (e > c1) e = c1;
+        for (int c = b * 8 < c0 ? c0 : b * 8; c <= e; c++) {
+            if (g_clipDepth[c] == 0x7FFFFFFF) continue;
+            const ClipMore *m = &g_clipMore[c];
+            if (m->d1 == 0x7FFFFFFF) continue;
+            g_clipTop[c] = depth > m->d2 ? m->b2 : depth > m->d1 ? m->b1 : m->b0;
+        }
+    }
+}
 
 // ------------------------------------------------------- deep polygons
 // The span rasterizer tests a face against the walls with the face's

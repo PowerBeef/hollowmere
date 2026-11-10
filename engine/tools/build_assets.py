@@ -554,12 +554,14 @@ def main():
         ev_ids = {nm: i + 1 for i, nm in enumerate(order)}
         ctx = scriptc.Ctx(strings, sound_ids, flags, ev_ids, L.door_names, L.thing_names, L.name)
         ctx.props = L.prop_names
-        ev_ptrs = ['0']
+        ev_ptrs, ev_lens = ['0'], [0]
         for nm in order:
             code = scriptc.compile_event(ev_src.get(nm, []), ctx)
             lv_c.append(f"static const u8 {pre}_ev_{nm}[] = {{" + ','.join(str(b) for b in code) + "};")
             ev_ptrs.append(f"{pre}_ev_{nm}")
+            ev_lens.append(len(code))
         lv_c.append(f"static const u8 *const {pre}_events[] = {{" + ','.join(ev_ptrs) + "};")
+        lv_c.append(f"static const u16 {pre}_evlen[] = {{" + ','.join(map(str, ev_lens)) + "};")
 
         def arr(ctype, nm, items):
             items = list(items) + ['{0}']
@@ -685,7 +687,7 @@ def main():
   {pre}_doors, {len(L.doors)}, {pre}_props, {len(L.props)}, {pre}_boxes, {len(L.boxes)}, {pre}_cellbox, {pre}_boxlist,
   {pre}_things, {len(L.things)}, {pre}_lights, {len(lights_c)},
   {pre}_inters, {len(L.inters)}, {pre}_trigs, {len(L.triggers)}, {pre}_patrol, {len(L.patrol)},
-  {pre}_events, {len(ev_ptrs)}, 1,
+  {pre}_events, {len(ev_ptrs)}, {pre}_evlen, 1,
   {int(L.start[0]*256)}, {int(L.start[1]*256)}, {L.start_angle}, {li}, {getattr(mod, 'MONSTER_MODE', 0)}, {amb}, 0,
   &{pre}_map, {ev_ids.get('resume', 0)}
 }};""")

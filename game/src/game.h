@@ -9,6 +9,11 @@
 #define MAX_THINGS 112
 #define NUM_FLAGS  64
 
+// The script threads a checkpoint remembers: which event each is running,
+// how far in, and how long it still waits.
+#define MAX_THREADS 8
+typedef struct { u8 ev[MAX_THREADS]; u16 pc[MAX_THREADS]; s16 wait[MAX_THREADS]; } ScriptSave;
+
 // ---------------------------------------------------------------- save
 typedef struct {
     u32 magic;
@@ -32,6 +37,7 @@ typedef struct {
     u8  propSet[20];
     u8  flags[NUM_FLAGS / 8];
     u8  lightLevel[16];         // per light group brightness /16
+    ScriptSave script;          // the level scripts in flight (engine/src/script.c)
     s32 px, py;
     u16 pangle;
     u16 checksum;
@@ -75,7 +81,6 @@ typedef struct {
     u16 outAngle;
     u32 stride;        // distance accumulator for steps
     u8  stepIdx;
-    s32 noise;         // noise radius (16.16 tiles) this frame
     u8  frozen;        // controls disabled (cutscene / death)
     s16 bob;
     u32 bobPhase;
@@ -128,14 +133,17 @@ extern Creature g_cr;
 extern s16 g_fear;          // 0..256
 
 // --------------------------------------------------------------- script
-void script_start(int event);
+int  script_start(int event);        // 0: no free thread (or no such event)
+int  script_running(int event);
 void script_update(void);
 void script_reset(void);
+void script_save(ScriptSave *out);
+void script_load(const ScriptSave *in);
 int  script_flag(int f);
 void script_set_flag(int f, int v);
 
 // --------------------------------------------------------------- game
-enum { GS_PLAY = 0, GS_DEAD, GS_EXIT, GS_ENDING, GS_MAP = 101 };
+enum { GS_PLAY = 0, GS_DEAD, GS_EXIT, GS_ENDING, GS_PAUSE = 100, GS_MAP = 101 };
 extern u8 g_gameSignal;      // set by systems to request a state change
 extern u8 g_nextLevel;
 extern u32 g_frame;
@@ -151,6 +159,7 @@ void game_message(int str, int frames);
 const char *game_str(int id);
 void game_build_sprites(void);
 void game_noise(s32 x, s32 y, s32 radius);
+void game_event(int ev);          // start a script event; waits for a free thread if need be
 
 // player
 void player_init(s32 x, s32 y, u16 angle);

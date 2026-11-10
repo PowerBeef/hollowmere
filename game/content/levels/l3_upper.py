@@ -148,15 +148,6 @@ EVENTS = {
         ('objective', "Find Thomas's room."),
         ('label', 'skip'),
     ],
-    'resume': [
-        ('start', 'ambient'),
-        ('ifnot_flag', 'l3_box', 'done'),
-        ('ifnot_flag', 'l3_nursery', 'box'),
-        ('jmp', 'done'),
-        ('label', 'box'),
-        ('start', 'musicbox'),
-        ('label', 'done'),
-    ],
     # stepping into the gallery: his door, at the far end, swings open
     'gallery': [
         ('wait', 40),

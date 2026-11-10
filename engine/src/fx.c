@@ -19,7 +19,25 @@ u8 s_fxVig[2], s_fxDark[2], s_fxFade[2], s_fxWhite[2], s_fxMosaic[2], s_fx3d[2],
 void fx_reset(void) {
     g_fx.bobY = 0; g_fx.offX = 0; g_fx.offY = 0; g_fx.roll = 0; g_fx.zoom = 256;
     g_fx.wave = 0; g_fx.vignette = 0; g_fx.vigDark = 0; g_fx.fade = 0; g_fx.white = 0;
-    g_fx.mosaic = 0; g_fx.letterbox = 0;
+    g_fx.mosaic = 0; g_fx.letterbox = 0; g_fx.slits = 0; g_fx.bars = 0;
+}
+
+// Fade the 3D frame that is on screen, as it stands, without rendering
+// another: a table set for a 3D frame only goes live with that frame's page
+// flip, so the steps are shown as a 2D screen that keeps the cinema bars
+// (the rows outside them hold the renderer's tables).
+void fx_fade_view(int to) {
+    u8 was3d = g_fx.mode3d;
+    g_fx.mode3d = 0;
+    g_fx.bars = 1;
+    while (g_fx.fade != to) {
+        g_fx.fade += g_fx.fade < to ? 1 : -1;
+        fx_prepare();
+        vsync();
+    }
+    vsync();                    // the last step is on screen
+    g_fx.bars = 0;
+    g_fx.mode3d = was3d;
 }
 
 void fx_init(void) {

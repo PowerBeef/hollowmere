@@ -16,8 +16,8 @@ enum {
     OP_NOTE, OP_START, OP_PLACEFUSES, OP_STOPSOUNDS, OP_JRAND, OP_CHAPTER, OP_HUDOFF, OP_JKEY
 };
 
-#define MAX_THREADS 8
-typedef struct { const u8 *base, *pc; s16 wait; u8 active; } Thread;
+typedef struct { const u8 *base, *pc; s16 wait; u8 active, ev; } Thread;
+_Static_assert(sizeof(Thread) == 12 && MAX_THREADS == 8, "Thread layout: update game/tests/hm.py");
 EWRAM_BSS static Thread s_th[MAX_THREADS];
 
 int  g_shakeAmt, g_shakeT;
@@ -44,15 +44,50 @@ void script_set_flag(int f, int v) {
     else g_state.flags[f >> 3] &= ~(1 << (f & 7));
 }
 
-void script_start(int ev) {
-    if (!g_level || ev <= 0 || ev >= g_level->numEvents) return;
+// Start an event on a free thread. Returns 0 when there is none (or no such
+// event): the caller decides whether to try again later.
+int script_start(int ev) {
+    if (!g_level || ev <= 0 || ev >= g_level->numEvents) return 0;
     for (int i = 0; i < MAX_THREADS; i++)
         if (!s_th[i].active) {
             s_th[i].base = s_th[i].pc = g_level->events[ev];
             s_th[i].wait = 0;
             s_th[i].active = 1;
-            return;
+            s_th[i].ev = ev;
+            return 1;
         }
+    return 0;
+}
+
+int script_running(int ev) {
+    for (int i = 0; i < MAX_THREADS; i++)
+        if (s_th[i].active && s_th[i].ev == ev) return 1;
+    return 0;
+}
+
+// The threads as a checkpoint keeps them, and back. (An event number or an
+// offset that does not belong to this level leaves its thread empty.)
+void script_save(ScriptSave *out) {
+    for (int i = 0; i < MAX_THREADS; i++) {
+        const Thread *t = &s_th[i];
+        out->ev[i] = t->active ? t->ev : 0;
+        out->pc[i] = t->active ? (u16)(t->pc - t->base) : 0;
+        out->wait[i] = t->active ? t->wait : 0;
+    }
+}
+
+void script_load(const ScriptSave *in) {
+    for (int i = 0; i < MAX_THREADS; i++) {
+        Thread *t = &s_th[i];
+        int ev = in->ev[i];
+        t->active = 0;
+        if (!g_level || ev <= 0 || ev >= g_level->numEvents || in->pc[i] >= g_level->eventLen[ev]) continue;
+        t->base = g_level->events[ev];
+        t->pc = t->base + in->pc[i];
+        t->wait = in->wait[i] < 0 ? 0 : in->wait[i];
+        t->ev = ev;
+        t->active = 1;
+    }
 }
 
 static inline u16 rd16(const u8 *p) { return p[0] | (p[1] << 8); }
@@ -115,7 +150,7 @@ static int run_one(Thread *t) {
         else if (p[0] == 2) { g_state.battery += p[1] * 10000; if (g_state.battery > 1000000) g_state.battery = 1000000; }
         else if (p[0] == 3) g_state.keys &= ~(1 << p[1]);
         p += 2; break;
-    case OP_CHECKPOINT: game_checkpoint(); break;
+    case OP_CHECKPOINT: t->pc = p; game_checkpoint(); break;      // (kept as going on from after this step)
     case OP_ENDLEVEL: g_nextLevel = p[0]; g_gameSignal = GS_EXIT; t->pc = p + 1; t->active = 0; return 0;
     case OP_FEAR: g_fear += p[0]; if (g_fear > 256) g_fear = 256; p += 1; break;
     case OP_BLACKOUT: g_blackoutT = rd16(p); p += 2; break;

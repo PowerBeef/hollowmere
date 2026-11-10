@@ -18,6 +18,7 @@ void ui_ending(int allNotes);
 void ui_options(int fromGame);
 void ui_fade_out(int speed);
 void ui_fade_in(int speed);
+void ui_plain_fx(void);             // a plain 2D screen: none of the view's movement or framing
 u16  ui_keys_pressed(void);
 void ui_text_screen(const char *text, int typewriter);
 void ui_map(void);                  // the floor plan (map.c)

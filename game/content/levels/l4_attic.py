@@ -124,10 +124,11 @@ EVENTS = {
         ('objective', "Follow the counting east, to the chapel."),
         ('label', 'done'),
     ],
+    # after a checkpoint is restored the scripts carry on by themselves, but
+    # she has to be put back at her prayers
     'resume': [
-        ('if_flag', 'l4_nave', 'done'),
-        ('start', 'counting'),
-        ('label', 'done'),
+        ('creature', 'pray', 10, 1),
+        ('creature', 'face', 192),
     ],
     # her murmured counting, from the altar
     'counting': [

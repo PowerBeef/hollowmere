@@ -22,7 +22,14 @@ extern s32 g_zmax8[VIEW_W / 8], g_zmin8[VIEW_W / 8], g_cdmin8[VIEW_W / 8];
 EWRAM_BSS u8 g_edges[MAP_W * MAP_H * 2] ALIGN4;
 const EdgeType *g_edgeTypes;
 
-#define MAXOV 2      // see-through openings remembered per column (nearest first)
+#define MAXOV 3      // see-through openings remembered per column (nearest first)
+// (the first two in the column's ColHit, whose layout rasm.s knows; a third,
+// which takes a view through three doorways in a row, beside it)
+typedef struct { s32 dist; const u8 *tex; u8 light, lintel, pad[2]; } Ov3;
+EWRAM_BSS static Ov3 s_ov3[8];
+EWRAM_BSS ClipMore g_clipMore[VIEW_W];
+EWRAM_BSS u32 g_multi8w[(VIEW_W / 8 + 2) / 4];
+u8 g_multiAny;
 
 // for objects: anything farther than clipDepth is hidden above row clipTop
 // g_clipTop / g_clipDepth live in VRAM (see gba.ld)
@@ -55,9 +62,9 @@ typedef struct {
     u32 lh;
     const u8 *tcol;
     u8 light, nov, pad[2];
-    s32 ovDist[MAXOV];
-    const u8 *ovTex[MAXOV];
-    u8 ovLight[MAXOV], ovLintel[MAXOV];
+    s32 ovDist[2];
+    const u8 *ovTex[2];
+    u8 ovLight[2], ovLintel[2];
     // for interpolating the column between two hits on the same plain wall
     u32 key;            // edge cell << 1 | side; 0 = not a plain wall
     const u8 *tex;      // texture of the face hit
@@ -134,11 +141,18 @@ IWRAM_CODE static void cast_column(const CastCtx *k, int col, ColHit *h) {
                 if (closed) tid = et->alt[fi];
                 else {
                     // see-through: remember the lintel above the opening, keep going
-                    if (nov < MAXOV) {
+                    if (nov < 2) {
                         h->ovDist[nov] = (s32)(((s64)e * fish) >> 14);
                         h->ovTex[nov] = walltex[tid] + (tx << 7);
                         h->ovLight[nov] = g_lightgrid[((gy & 63) << 6) | (gx & 63)] & LG_LIGHT;
                         h->ovLintel[nov] = et->lintel;
+                        nov++;
+                    } else if (nov < MAXOV) {
+                        Ov3 *o = &s_ov3[col & 7];
+                        o->dist = (s32)(((s64)e * fish) >> 14);
+                        o->tex = walltex[tid] + (tx << 7);
+                        o->light = g_lightgrid[((gy & 63) << 6) | (gx & 63)] & LG_LIGHT;
+                        o->lintel = et->lintel;
                         nov++;
                     }
                     continue;
@@ -221,40 +235,56 @@ static inline void wall_span(const ColHit *h, WallSpan *w) {
     w->step = (u32)(((u64)h->dist * 26214) >> 16);     // 128 texels / lh rows = 0.4 * dist
 }
 
-// what a column's openings hide of the objects behind them: anything
-// farther than the nearest opening is cut off above its lintel
+// one opening of a column: its depth, and the row its lintel comes down to
+static inline s32 opening(int col, const ColHit *h, int k, int *bottom, const u8 **tex, u32 *light) {
+    s32 od; int lintel;
+    if (k < 2) { od = h->ovDist[k]; lintel = h->ovLintel[k]; *tex = h->ovTex[k]; *light = h->ovLight[k]; }
+    else { const Ov3 *o = &s_ov3[col & 7]; od = o->dist; lintel = o->lintel; *tex = o->tex; *light = o->light; }
+    if (od < 0x1000) od = 0x1000;
+    u32 olh = od < (8 << 16) ? lh_near[od >> 6] : lh_far[od >> 9];
+    *bottom = HORIZON - (int)(olh >> 1) + (int)((olh * (u32)(WALL_H * 32 - lintel)) >> 6);
+    return od;
+}
+
+// what a column's openings hide of the objects behind them (see render.h)
 __attribute__((optimize("Os"))) IWRAM_CODE static void lintel_clip(int col, const ColHit *h) {
-    s32 cd = 0x7FFFFFFF;
-    int ct = ROW0;
-    for (int k = 0; k < h->nov; k++) {
-        s32 od = h->ovDist[k];
-        if (od < 0x1000) od = 0x1000;
-        u32 olh = od < (8 << 16) ? lh_near[od >> 6] : lh_far[od >> 9];
-        int otop = HORIZON - (int)(olh >> 1);
-        int obot = otop + (int)((olh * (u32)(WALL_H * 32 - h->ovLintel[k])) >> 6);
-        if (od < cd) cd = od;
-        if (obot > ct) ct = obot;
+    const u8 *tex; u32 light;
+    int b0, b;
+    g_clipDepth[col] = opening(col, h, 0, &b0, &tex, &light);
+    g_clipTop[col] = b0;
+    ClipMore *m = &g_clipMore[col];
+    m->d1 = m->d2 = 0x7FFFFFFF;
+    if (h->nov < 2) return;
+    // (the openings come nearest first; each lintel hides at least what the nearer ones do)
+    m->b0 = b0;
+    m->d1 = opening(col, h, 1, &b, &tex, &light);
+    if (b < b0) b = b0;
+    m->b1 = m->b2 = b;
+    if (h->nov > 2) {
+        int b2;
+        m->d2 = opening(col, h, 2, &b2, &tex, &light);
+        m->b2 = b2 > b ? b2 : b;
     }
-    g_clipDepth[col] = cd;
-    g_clipTop[col] = ct;
+    g_multi8[col >> 3] = 1;
+    g_multiAny = 1;
 }
 
 // lintels over the openings a column looks through, far to near
 __attribute__((optimize("Os"))) IWRAM_CODE static void draw_lintels(u8 *fb, int col, const ColHit *h) {
     int cone = g_coneOf[col];
     for (int k = h->nov - 1; k >= 0; k--) {
-        s32 od = h->ovDist[k];
-        if (od < 0x1000) od = 0x1000;
+        const u8 *tex; u32 light;
+        int obot;
+        s32 od = opening(col, h, k, &obot, &tex, &light);
         u32 olh = od < (8 << 16) ? lh_near[od >> 6] : lh_far[od >> 9];
         int otop = HORIZON - (int)(olh >> 1);
         // the lintel covers the wall above the opening height
-        int obot = otop + (int)((olh * (u32)(WALL_H * 32 - h->ovLintel[k])) >> 6);
         int a = otop < ROW0 ? ROW0 : otop, b = obot > ROW1 ? ROW1 : obot;
         if (b <= a) continue;
         u32 ostep = (u32)(((u64)od * 26214) >> 16);
         u32 ol = g_flashW[cone][od >> 12 > 255 ? 255 : od >> 12];
-        if (h->ovLight[k] > ol) ol = h->ovLight[k];
-        col_one(fb + a * 240 + col, b - a, h->ovTex[k], g_colormap + (ol << 8), (u32)(a - otop) * ostep, ostep);
+        if (light > ol) ol = light;
+        col_one(fb + a * 240 + col, b - a, tex, g_colormap + (ol << 8), (u32)(a - otop) * ostep, ostep);
     }
 }
 
@@ -283,23 +313,16 @@ extern int wall_quad(u8 *fb, int col, const ColHit *h);
 
 // ------------------------------------------------------------- the frame
 #ifdef DEV
-u32 g_profStage[4];          // cycles: ray casting, floors + walls, occluder pass, objects
+EWRAM_BSS u32 g_profStage[4];          // cycles: ray casting, floors + walls, occluder pass, objects
 u32 g_profNoIrq;             // bench: render with interrupts off
 volatile u32 g_noObjects;    // bench: skip the objects
 #endif
 
-IWRAM_CODE void render_view(u8 *fb) {
-#ifdef DEV
-    u16 ime = REG_IME;
-    if (g_profNoIrq) REG_IME = 0;
-#endif
-#ifdef PIXCNT
-    { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) pc[i] = 0; }
-    for (int i = 0; i < 4; i++) g_castStat[i] = 0;
-#endif
-    DEV_ONLY(u32 t0 = PROF_T();)
-    occluders_prepass();
-    DEV_ONLY(u32 t1 = PROF_T();)
+// Walls, floors and ceilings. A function of its own so that its frame (the
+// ring of column hits is most of 600 bytes) is off the stack again before
+// the objects are drawn: that is where the stack is deepest. Returns the
+// time spent casting (test ROM).
+__attribute__((noinline)) IWRAM_CODE static u32 draw_room(u8 *fb) {
     CastCtx k;
     k.px = g_cam.x; k.py = g_cam.y;
     k.dirX = g_cam.dirX; k.dirY = g_cam.dirY;
@@ -313,6 +336,7 @@ IWRAM_CODE void render_view(u8 *fb) {
     g_flatCtx.py64 = k.py << 6;
     int js = g_floorSplit;
     DEV_ONLY(u32 tc = 0;)
+    if (g_multiAny) { g_multiAny = 0; for (int i = 0; i < (VIEW_W / 8 + 2) / 4; i++) g_multi8w[i] = 0; }
     // The view in groups of four columns, left to right. Rays: every even
     // column, the odd ones in between mostly interpolated on plain walls
     // (a ring of the last few hits, in IWRAM).
@@ -332,7 +356,7 @@ IWRAM_CODE void render_view(u8 *fb) {
         } else cast_column(&k, col + 2, H(col + 2));
         if (g_fullC0 >= g_fullC1 && g_wallHalfLh > 320) {
             // everything at half resolution: the odd columns repeat the even ones
-            for (int o = col + 1; o < col + 4; o += 2) { *H(o) = *H(o - 1); g_zbuf[o] = g_zbuf[o - 1]; }
+            for (int o = col + 1; o < col + 4; o += 2) { *H(o) = *H(o - 1); s_ov3[o & 7] = s_ov3[(o - 1) & 7]; g_zbuf[o] = g_zbuf[o - 1]; }
         } else for (int o = col + 1; o < col + 4; o += 2) {
             ColHit *a = H(o - 1), *c = H(o + 1);
             if (o + 1 < VIEW_W && a->key && a->key == c->key) lerp_column(o, a, c, H(o));
@@ -417,6 +441,26 @@ IWRAM_CODE void render_view(u8 *fb) {
         for (int c = col; c < col + 4; c++) if (H(c)->nov) draw_lintels(fb, c, H(c));
     }
     #undef H
+#ifdef DEV
+    return tc;
+#else
+    return 0;
+#endif
+}
+
+IWRAM_CODE void render_view(u8 *fb) {
+#ifdef DEV
+    u16 ime = REG_IME;
+    if (g_profNoIrq) REG_IME = 0;
+#endif
+#ifdef PIXCNT
+    { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) pc[i] = 0; }
+    for (int i = 0; i < 4; i++) g_castStat[i] = 0;
+#endif
+    DEV_ONLY(u32 t0 = PROF_T();)
+    occluders_prepass();
+    DEV_ONLY(u32 t1 = PROF_T();)
+    DEV_ONLY(u32 tc =) draw_room(fb);
     DEV_ONLY(u32 t2 = PROF_T();)
 #ifdef PIXCNT
     { volatile u32 *pc = (volatile u32 *)0x02037000; for (int i = 0; i < 20; i++) pc[64 + i] = pc[i]; }

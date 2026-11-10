@@ -45,7 +45,7 @@ void fx_prepare(void) {
     }
     // vignette window per line (ellipse), letterbox
     u16 *win = s_win[n];
-    int lb = g_fx.letterbox && d3;      // menus and notes use the whole screen
+    int lb = (g_fx.letterbox && d3) || g_fx.bars;      // menus and notes use the whole screen
     static u32 s_winKey[2] = { 0xFFFFFFFF, 0xFFFFFFFF };
     u32 wk = (u32)g_fx.vignette | ((u32)lb << 16) | ((u32)g_fx.slits << 24);
     if (wk == s_winKey[n]) { /* unchanged */ }

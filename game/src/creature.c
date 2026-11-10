@@ -382,7 +382,9 @@ static void to_chase(void) {
 void creature_update(void) {
     Player *p = &g_player;
     if (g_cr.state == CR_OFF) {
-        if (g_cr.mode >= 1 && g_level->numPatrol) {
+        // roaming modes: she comes back on patrol after a while (mode 3, at
+        // prayer, is placed by the level's scripts and nowhere else)
+        if ((g_cr.mode == 1 || g_cr.mode == 2) && g_level->numPatrol) {
             if (g_cr.cooldown > 0) g_cr.cooldown--;
             else {
                 int n = pick_patrol_node(1);
@@ -399,8 +401,10 @@ void creature_update(void) {
     g_cr.dist = dist_approx(g_cr.x - p->x, g_cr.y - p->y);
     if (g_cr.state == CR_KILL) { g_cr.moving = 0; return; }
 
-    // perception -> alert
-    int rate = perceive();
+    // perception -> alert (a script holding the player still for a scene
+    // holds her too: she neither notices nor catches)
+    int held = p->frozen;
+    int rate = held ? 0 : perceive();
     if (rate) {
         g_cr.alert += rate;
         if (g_cr.alert > 300) g_cr.alert = 300;
@@ -466,11 +470,8 @@ void creature_update(void) {
         }
         if (g_cr.lostTimer > 600) { g_cr.state = CR_SEARCH; g_cr.timer = 500; }
         // caught?
-        if (g_cr.dist < CATCH_DIST && (!p->hiding || g_cr.knowsHiding)) {
-            g_cr.state = CR_KILL;
-            g_gameSignal = GS_DEAD;
-        }
-        if (p->hiding && g_cr.knowsHiding && g_cr.dist < 0x10000) {
+        if (!held && ((g_cr.dist < CATCH_DIST && (!p->hiding || g_cr.knowsHiding)) ||
+                      (p->hiding && g_cr.knowsHiding && g_cr.dist < 0x10000))) {
             g_cr.state = CR_KILL;
             g_gameSignal = GS_DEAD;
         }
@@ -514,6 +515,7 @@ void creature_update(void) {
         break;
     case CR_PRAY:
         g_cr.moving = 0;
+        if (held) break;                 // (her prayer waits out the scene too)
         if (!g_cr.prayTurn && g_cr.timer == 120) {
             snd_play3d(SND_WHISPER, g_cr.x, g_cr.y, 190, 3600, 120);   // she stirs before turning
             if (!script_flag(63)) { script_set_flag(63, 1); game_message(STR_M_STIRRING, 200); }

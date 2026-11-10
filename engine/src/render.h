@@ -48,8 +48,20 @@ extern void col_one(u8 *p, int n, const u8 *tex, const u8 *cm, u32 tp, u32 step)
 extern s16 g_camX[VIEW_W];
 extern u8  g_coneOf[VIEW_W];
 extern u8  g_flashW[NCONE][256];
+// What a column's doorways hide of the objects seen through them: anything
+// farther than clipDepth (the nearest opening) is cut off above row clipTop
+// (the bottom of that opening's lintel). A column that looks through two or
+// three openings in a row keeps the others in g_clipMore, and an object
+// about to be drawn there first calls clip_for_depth() with its own depth,
+// which sets clipTop to the lowest lintel of the openings nearer than it.
 extern s32 g_clipDepth[VIEW_W];
 extern s16 g_clipTop[VIEW_W];
+typedef struct { s32 d1, d2; s16 b0, b1, b2, pad; } ClipMore;   // depths of the 2nd and 3rd opening; lintel rows, cumulative
+extern ClipMore g_clipMore[VIEW_W];
+extern u32 g_multi8w[(VIEW_W / 8 + 2) / 4];
+#define g_multi8 ((u8 *)g_multi8w)        // per block of 8 columns: some column has several openings
+extern u8 g_multiAny;                    // ... anywhere in this frame
+void clip_for_depth(int c0, int c1, s32 depth) __attribute__((long_call));
 
 void draw_objects(u8 *fb);
 void occluders_prepass(void);
