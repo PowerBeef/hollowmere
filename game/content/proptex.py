@@ -379,22 +379,150 @@ def piano_front(seed=218):
     return np.clip(img, 0, 1)
 
 
-@tex('fireplace_front')
-def fireplace_front(seed=219):
-    rng = np.random.default_rng(seed)
+# The fireplace's front, one texture per state of its fire (the game swaps
+# them on the instance: game/src/hearth.c). The firebox opens from row 22 to
+# the floor, columns 14 to 50; the grate's top bar is at row 44.
+FB_Y0, FB_X0, FB_X1 = 22, 14, 50
+
+
+def _fire_surround(seed, glow=0.0):
+    """The marble surround with the firebox dark in it; glow: how much
+    firelight spills on the stone beside the opening."""
     img = marble(seed + 1).copy() * np.array([0.62, 0.60, 0.58])
     bevel(img, 0, 0, S, S, 1.3, 0.55)
-    # firebox opening with dying embers
-    rect(img, 22, 14, 64, 50, [0.03, 0.02, 0.02])
-    emb = blotches(S, S, rng, base=8, threshold=0.6, softness=0.1)
-    emb[:56] = 0
-    img = lerp(img, np.array([0.55, 0.14, 0.04]), emb * 0.9)
+    if glow:
+        yy, xx = np.mgrid[0:S, 0:S].astype(float)
+        dx = np.maximum(np.maximum(FB_X0 - xx, xx - FB_X1), 0)
+        dy = np.maximum(FB_Y0 - yy, 0)
+        near = np.clip(1 - np.hypot(dx, dy) / 12, 0, 1) ** 1.5
+        img = lerp(img, img * np.array([1.9, 1.15, 0.6]), near * glow)
+    rect(img, FB_Y0, FB_X0, S, FB_X1, [0.03, 0.02, 0.02])
+    return img
+
+
+def _fire_finish(img):
     for x in range(16, 48, 6):
         vline(img, x, 44, 58, [0.18, 0.18, 0.18])           # grate bars
     hline(img, 44, 16, 48, [0.2, 0.2, 0.2])
     bevel(img, 20, 12, 64, 52, 0.55, 1.3)
     rect(img, 0, 0, 6, S, [0.50, 0.48, 0.46])                 # mantel edge
     return np.clip(img, 0, 1)
+
+
+def _logs(img, rng, bark, cut, char=0.0):
+    """Three split logs laid across the grate, one on the two."""
+    for (y, x0, x1, r) in ((41, 17, 47, 3.2), (40, 20, 44, 3.0), (35, 21, 43, 2.8)):
+        yy, xx = np.mgrid[0:S, 0:S].astype(float)
+        body = (np.abs(yy - y) < r) & (xx >= x0) & (xx <= x1)
+        round_ = 1 - ((yy - y) / r) ** 2 * 0.6
+        grain = 0.8 + 0.4 * fbm(S, S, 12, 2, rng, aspect=6)
+        col = np.array(bark)[None, None, :] * (round_ * grain)[..., None]
+        img[body] = col[body]
+        end = ellipse(S, S, y, x0 + 1.5, r * 0.95, 1.6) if x0 < 20 else ellipse(S, S, y, x1 - 1.5, r * 0.95, 1.6)
+        img[:] = lerp(img, np.array(cut), end * (1 - char))
+    return img
+
+
+@tex('fire_cold')
+def fire_cold(seed=219):
+    """Laid and never lit: split logs on the grate, kindling under them."""
+    rng = np.random.default_rng(seed)
+    img = _fire_surround(seed)
+    for k in range(7):                                            # kindling poking out under the logs
+        x = 19 + k * 4 + int(rng.integers(-1, 2))
+        vline(img, x, 45, 45 + int(rng.integers(3, 7)), [0.30, 0.22, 0.12])
+    img = _logs(img, rng, [0.30, 0.19, 0.10], [0.52, 0.40, 0.24])
+    return _fire_finish(img)
+
+
+@tex('fire_dead')
+def fire_dead(seed=223):
+    """Raked out: grey ash heaped under the grate, a charred end left on it."""
+    rng = np.random.default_rng(seed)
+    img = _fire_surround(seed - 4)
+    yy, xx = np.mgrid[0:S, 0:S].astype(float)
+    heap = (yy > 60 - 7 * np.exp(-((xx - 32) / 11) ** 2) + 1.5 * fbm(S, S, 8, 2, rng)) & (xx > FB_X0) & (xx < FB_X1)
+    ash = np.array([0.30, 0.29, 0.28])[None, None, :] * (0.7 + 0.6 * fbm(S, S, 10, 3, rng))[..., None]
+    img[heap] = ash[heap]
+    body = (np.abs(yy - 42) < 2.6) & (xx >= 22) & (xx <= 40)
+    img[body] = (np.array([0.07, 0.06, 0.06])[None, None, :] * (0.7 + 0.8 * fbm(S, S, 14, 2, rng))[..., None])[body]
+    return _fire_finish(img)
+
+
+def _fire_burning(seed, k):
+    """Frame k of the fire: flame tongues over glowing logs, embers under
+    the grate, the firebox and the stone around it lit from inside."""
+    rng = np.random.default_rng(seed)                 # (the logs and the box: the same in every frame)
+    frng = np.random.default_rng(seed * 31 + k)       # the flames: their own in each
+    img = _fire_surround(seed - 5, glow=0.55 + 0.1 * (k % 2))
+    yy, xx = np.mgrid[0:S, 0:S].astype(float)
+    inside = (yy >= FB_Y0) & (xx >= FB_X0) & (xx < FB_X1)
+    # the box's back and sides, red in the firelight, brightest low in the middle
+    back = np.clip(1.15 - np.hypot((xx - 32) / 20, (yy - 50) / 26), 0, 1)
+    box = np.array([0.42, 0.11, 0.03])[None, None, :] * (back * (0.75 + 0.5 * fbm(S, S, 6, 2, rng)))[..., None]
+    img[inside] = box[inside]
+    # embers under the grate: a bed of dull red with bright coals in it
+    bed = (yy > 55 + 2.5 * fbm(S, S, 7, 2, rng)) & inside
+    img[bed] = (np.array([0.50, 0.11, 0.03])[None, None, :] * (0.6 + 0.8 * fbm(S, S, 12, 2, rng))[..., None])[bed]
+    emb = blotches(S, S, frng, base=16, threshold=0.60, softness=0.10) * bed
+    img = lerp(img, np.array([1.0, 0.55, 0.12]), emb * 0.95)
+    # flame tongues: heat 1 at the heart of a tongue's base, 0 at its edge and tip
+    heat = np.zeros((S, S))
+    n = 6
+    for i in range(n):
+        cx = 19.5 + i * 5.0 + frng.uniform(-1.5, 1.5)
+        base = frng.uniform(37.0, 41.0) - (4.0 if i in (2, 3) else 0.0)       # (behind the logs: the middle ones from the top log)
+        h = frng.uniform(9.0, 13.0) + (2.5 if (i + k) % 3 == 0 else 0.0)
+        w = frng.uniform(4.0, 5.4)
+        lean, wav, ph = frng.uniform(-0.25, 0.25), frng.uniform(0.6, 1.5), frng.uniform(0, 6.28)
+        t = np.clip((base - yy) / h, 0, 1)                         # 0 at the base, 1 at the tip
+        mid = cx + lean * (base - yy) + wav * np.sin((base - yy) / 3.2 + ph) * t
+        half = w * (1 - t) ** 0.8 + 0.25
+        hh = np.clip(1 - np.abs(xx - mid) / half, 0, 1) * np.clip(1.15 - t, 0, 1) * (yy <= base + 2) * (yy > base - h)
+        heat = np.maximum(heat, hh)
+    heat *= inside
+    heat = np.clip(heat * (0.9 + 0.25 * fbm(S, S, 9, 2, frng)), 0, 1)
+    ramp = [(0.00, [0.42, 0.08, 0.02]), (0.22, [0.85, 0.24, 0.04]), (0.48, [1.00, 0.55, 0.08]),
+            (0.72, [1.00, 0.80, 0.25]), (1.00, [1.00, 0.95, 0.62])]
+    col = np.zeros((S, S, 3))
+    for (h0, c0), (h1, c1) in zip(ramp, ramp[1:]):
+        f = np.clip((heat - h0) / (h1 - h0), 0, 1)[..., None]
+        sel = (heat >= h0)[..., None]
+        col = np.where(sel, np.array(c0) * (1 - f) + np.array(c1) * f, col)
+    img = lerp(img, col, np.clip(heat * 3.0, 0, 1))
+    # the logs in front of the flames' feet: black against the fire, their undersides glowing
+    img = _logs(img, rng, [0.10, 0.05, 0.03], [0.55, 0.16, 0.04], char=0.2)
+    under = np.zeros((S, S))
+    for (y, x0, x1, r) in ((41, 17, 47, 3.2), (40, 20, 44, 3.0), (35, 21, 43, 2.8)):
+        under = np.maximum(under, ((yy - y > r * 0.35) & (yy - y < r) & (xx >= x0) & (xx <= x1)) * (0.6 + 0.4 * frng.random((S, S))))
+    img = lerp(img, np.array([1.0, 0.42, 0.08]), under * 0.85)
+    # small flames licking up in front, between the logs
+    for i in range(3):
+        cx, base, h = 22.0 + i * 9.0 + frng.uniform(-2, 2), frng.uniform(43.0, 45.0), frng.uniform(5.0, 9.0)
+        t = np.clip((base - yy) / h, 0, 1)
+        hh = np.clip(1 - np.abs(xx - cx - 0.8 * np.sin((base - yy) / 2.0 + i)) / (2.2 * (1 - t) + 0.3), 0, 1) * (yy <= base) * (yy > base - h)
+        img = lerp(img, np.array([1.0, 0.62, 0.12]), np.clip(hh * 2.2, 0, 1) * inside)
+        img = lerp(img, np.array([1.0, 0.90, 0.50]), np.clip(hh * 2.2 - 1.2, 0, 1) * inside)
+    # a few sparks above the tongues
+    for _ in range(4):
+        sy, sx = int(frng.integers(24, 34)), int(frng.integers(18, 46))
+        img[sy, sx] = [1.0, 0.72, 0.22]
+    return _fire_finish(img)
+
+
+@tex('fire_a')
+def fire_a(seed=224):
+    return _fire_burning(seed, 0)
+
+
+@tex('fire_b')
+def fire_b(seed=224):
+    return _fire_burning(seed, 1)
+
+
+@tex('fire_c')
+def fire_c(seed=224):
+    return _fire_burning(seed, 2)
 
 
 @tex('stove_front')

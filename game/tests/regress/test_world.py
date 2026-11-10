@@ -7,6 +7,13 @@ GRID = 64 * 64          # the light grid: 64 x 64 half-tile cells, light in the 
 LIGHT_GRID = 0x02000000  # g_lightgrid (engine.h: the start of EWRAM)
 
 
+# How often the lamps alone are looked at for the brightest each cell gets.
+# (A candle's brightest step comes up about one time in four: with the ten
+# looks this test first took, a cell's brightest was missed one time in
+# twenty, and a later flicker read as a trail. Sixty do not miss it.)
+LAMPS = 60
+
+
 def test_lantern_leaves_no_light_behind(t):
     """The light of the Sister's lantern goes with her: where she has walked,
     and after she is gone, the light grid shows only what the lamps give."""
@@ -16,14 +23,14 @@ def test_lantern_leaves_no_light_behind(t):
     def grid(tag):
         return [b & 31 for b in open(f"{t.out}/{tag}.bin", 'rb').read()]
     L = hm.boot() + hm.dismiss() + ["run 300"] + hm.dismiss() + [f"poke8 {{g_player+{hm.PL_FROZEN}}} 1"]     # (held still: she takes no notice)
-    for k in range(10):
+    for k in range(LAMPS):
         L += ["run 7"] + dump(f"lamps{k}")                   # the lamps alone, flickering
     L += hm.spawn(3.0, hm.CR_PATROL, settle=0)
     for k in range(4):
         L += ["run 180", f"expect8 {{g_cr}} == {hm.CR_PATROL} she is on her rounds"] + dump(f"walk{k}") + ["peeks32 {g_cr+4}", "peeks32 {g_cr+8}"]
     L += hm.dismiss() + ["run 30"] + dump('gone')
     v = t.run(L).values()
-    most = [max(c) for c in zip(*(grid(f"lamps{k}") for k in range(10)))]
+    most = [max(c) for c in zip(*(grid(f"lamps{k}") for k in range(LAMPS)))]
     moved = set()
     for k in range(4):
         x, y = v[2 * k] >> 15, v[2 * k + 1] >> 15            # where she is, in light cells; the lantern reaches seven

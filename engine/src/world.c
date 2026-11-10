@@ -99,7 +99,7 @@ u8 g_doorEpoch;
 // Lights further than this (half tiles) from the camera stop flickering and
 // are baked into the base layer at their average brightness.
 #define LIGHT_NEAR 14
-static const u16 s_avgLevel[5] = { 256, 236, 228, 150, 228 };   // by LIGHT_* mode
+static const u16 s_avgLevel[NUM_LIGHT_MODES] = { 256, 236, 228, 150, 228, 226 };   // by LIGHT_* mode
 static u32 s_nearMask;
 static u32 s_lightTick;         // the logic tick of the last flicker step
 // A rectangle of the grid that someone else has lit on top of this module's
@@ -128,6 +128,7 @@ void world_update_lights(int frame) {
     for (int i = 0; i < g_numDLights; i++) {
         DynLight *dl = &g_dlights[i];
         if (dl->def->mode == LIGHT_STEADY) continue;
+        if (!dl->on || dl->level <= 4) continue;      // out: nothing of it to flicker (a hearth not lit; its rectangle put back every step cost 5,000 cycles)
         int dx = dl->x0 - gx, dx2 = gx - (dl->x0 + dl->w - 1);
         int dy = dl->y0 - gy, dy2 = gy - (dl->y0 + dl->h - 1);
         if (dx2 > dx) dx = dx2;
@@ -195,6 +196,15 @@ void world_update_lights(int frame) {
         case LIGHT_CANDLE:
             lvl = 200 + (rng_next() & 55);
             break;
+        case LIGHT_FIRE: {
+            // a fire swells and sinks slowly (flick eases towards a new
+            // level each step), shivers a little, and gutters now and then
+            u32 r = rng_next();
+            dl->flick = (dl->flick * 3 + 40 + (r & 63)) >> 2;
+            lvl = 150 + dl->flick + ((r >> 8) & 15);
+            if (((r >> 12) & 31) == 0) lvl -= 60;
+            if (lvl > 256) lvl = 256;
+            break; }
         default: lvl = 256;
         }
         lvl = (lvl * dl->level) >> 8;

@@ -659,3 +659,53 @@ def clock_strike():
     x += lp(np.random.default_rng(77).standard_normal(n), 900) * np.exp(-t / 0.015) * 0.6
     x = reverb(x, 1.3, 2600, 0.3, 0.0)[:n]
     return normalize(fade_edges(x, 0.001, 0.4), 0.9), None
+
+
+# ------------------------------------------------------------------ fire
+@snd('match')
+def match():
+    """A safety match dragged along the strip, catching, and the flare of
+    kindling taking."""
+    r = rng_(1201)
+    n = secs(1.1)
+    scratch = bp(noise(n, r), 2200, 6000) * env_lin(n, [(0, 0), (0.02, 0.7), (0.10, 0.9), (0.13, 0)])
+    scratch *= 0.6 + 0.4 * (np.sin(2 * np.pi * 190 * tt(n)) > 0)          # the head rasping over the grit
+    flare = hp(lp(noise(n, r), 2600), 300) * env_lin(n, [(0, 0), (0.13, 0), (0.17, 1.0), (0.30, 0.45), (0.9, 0.12), (1.1, 0)])
+    pops = np.zeros(n)
+    for t0 in (0.36, 0.52, 0.61, 0.83):
+        pops += at(reson(np.r_[1.0, np.zeros(300)], r.uniform(1800, 3600), 6) * r.uniform(0.4, 0.9), t0, n)
+    return normalize(fade_edges(scratch * 0.8 + flare * 0.9 + pops * 0.5, 0.002, 0.05), 0.8), None
+
+
+@snd('fire', loop=True)
+def fire():
+    """A log fire: the low roar of its draught, and the wood cracking (a
+    positional loop)."""
+    r = rng_(1202)
+    n = secs(3.2)
+    t = tt(n)
+    roar = lp(brown(n, r), 320) * (0.75 + 0.25 * np.sin(2 * np.pi * 0.62 * t) * np.sin(2 * np.pi * 1.9 * t + 1))
+    flutter = bp(noise(n, r), 400, 1400) * 0.10 * (0.6 + 0.4 * lp(noise(n, r), 9) * 12)
+    x = roar * 0.55 + flutter
+    k = 0
+    while True:                                   # crackles: about nine a second, a loud snap now and then
+        k += int(r.exponential(SR / 9.0)) + 1
+        if k >= n - 400:
+            break
+        amp = r.uniform(0.15, 0.5) if r.random() > 0.12 else r.uniform(0.7, 1.0)
+        m = 260
+        x[k:k + m] += reson(np.r_[1.0, np.zeros(m - 1)], r.uniform(1400, 4200), r.uniform(3, 9)) * amp
+    return loopify(normalize(x, 0.85), 0.3), 0
+
+
+@snd('fire_out')
+def fire_out():
+    """A fire smothered: the hiss of it going, the embers ticking as they cool."""
+    r = rng_(1203)
+    n = secs(1.8)
+    hiss = hp(noise(n, r), 2800) * env_lin(n, [(0, 0), (0.03, 1.0), (0.35, 0.5), (1.1, 0.08), (1.8, 0)])
+    thump = lp(noise(n, r), 180) * env_ad(n, 0.01, 0.12) * 1.5
+    ticks = np.zeros(n)
+    for t0 in (0.55, 0.78, 1.05, 1.42):
+        ticks += at(reson(np.r_[1.0, np.zeros(200)], r.uniform(2400, 4000), 10) * r.uniform(0.2, 0.45), t0, n)
+    return normalize(fade_edges(hiss * 0.8 + thump + ticks, 0.002, 0.2), 0.8), None

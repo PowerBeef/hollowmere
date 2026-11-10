@@ -155,6 +155,7 @@ CASES = [
     ("a thing with param 300", lambda: parse(THINGS=[dict(type='key', x=1.5, y=1.5, param=300)]), "param= of the thing"),
     ("a prop off the map", lambda: parse(PROPS=[dict(model='chair', x=40.0, y=1.5)]), "is off the map"),
     ("a patrol node outside", lambda: parse(PATROL=[(9, 9)]), "patrol node (9, 9)"),
+    ("a hearth on light group 16", lambda: parse(PROPS=[dict(model='fireplace', x=1.5, y=1.5, inter=('hearth', 16))]), "the light group 16: it takes one from 0 to 15"),
     ("an unknown action", lambda: script([('explode', 3)]), "there is no action 'explode'"),
     ("an action with an argument missing", lambda: script([('sound3d', 'click', 3)]), "missing or mistaken argument"),
     ("a jump to no label", lambda: script([('jmp', 'nowhere')]), "the label 'nowhere'"),

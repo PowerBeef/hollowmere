@@ -643,3 +643,21 @@ def telephone(seed=35):
     # the cord trailing off the back
     c.paint(c.mask_line([(25, 14), (27, 18), (26, 21)], 0.8), BAK * 1.2)
     return c.result(edge_dark=0.25)
+
+
+# (new kinds go after the old ones: a thing's kind is a number in the level data)
+@prop('matches', 20, 14, 0.13, 0.09, glint=True)
+def matches(seed=36):
+    """A box of safety matches, its tray pushed a little way out."""
+    c = Canvas(20, 14, seed)
+    tray = c.mask_poly([(11, 5), (19, 5), (19, 12), (11, 12)])
+    c.paint(tray, np.array([0.55, 0.42, 0.24]), c.grad_y(5, 12, 1.2, 0.7))
+    for x in (13, 15, 17):
+        c.paint(c.mask_line([(x, 6), (x, 11)], 0.9), np.array([0.80, 0.70, 0.48]))
+        c.paint(c.mask_ellipse(x, 6.3, 0.9, 0.9), np.array([0.62, 0.12, 0.08]))
+    sleeve = c.mask_poly([(1, 3), (14, 3), (14, 13), (1, 13)])
+    c.paint(sleeve, np.array([0.70, 0.16, 0.10]), c.grad_y(3, 13, 1.35, 0.6))
+    c.paint(c.mask_poly([(3, 5.5), (12, 5.5), (12, 10.5), (3, 10.5)]), np.array([0.86, 0.78, 0.50]), c.grad_y(5, 11, 1.2, 0.8))
+    c.paint(c.mask_ellipse(7.5, 8, 2.2, 1.6), np.array([0.70, 0.16, 0.10]))
+    c.paint(c.mask_poly([(1, 11.5), (14, 11.5), (14, 13), (1, 13)]), np.array([0.25, 0.14, 0.10]))      # the striking strip
+    return c.result(edge_dark=0.2)

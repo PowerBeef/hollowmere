@@ -10,7 +10,7 @@ import harness
 LEVEL, OBJECTIVE, KEYS, FUSES, PLACED, BATTERY, FLASH_ON, DEATHS = 4, 6, 12, 14, 15, 16, 20, 22
 TRIG_FIRED, FLAGS, LIGHT_LEVEL = 56, 144, 152
 # Creature g_cr
-CR_STATE, CR_X, CR_Y, CR_TIMER = 0, 4, 8, 34
+CR_STATE, CR_MODE, CR_X, CR_Y, CR_TIMER, CR_ALERT, CR_COOLDOWN, CR_TENDT = 0, 1, 4, 8, 34, 48, 74, 96
 # Player g_player
 PL_HIDING, PL_FROZEN = 16, 37
 # FxState g_fx
@@ -20,7 +20,13 @@ SET_CONTROLS = 2
 # Thing g_things[112] (16 bytes each); script threads s_th[8] (12 bytes each)
 THING_SIZE, THING_FLAGS, MAX_THINGS, THF_HIDDEN = 16, 10, 112, 2
 TH_SIZE, TH_ACTIVE, TH_EVENT, MAX_THREADS = 12, 10, 11, 8
-CR_OFF, CR_SCRIPT, CR_PATROL, CR_INVESTIGATE, CR_CHASE, CR_SEARCH, CR_LEAVE, CR_KILL, CR_PRAY, CR_WAIT, CR_RETURN = range(11)
+CR_OFF, CR_SCRIPT, CR_PATROL, CR_INVESTIGATE, CR_CHASE, CR_SEARCH, CR_LEAVE, CR_KILL, CR_PRAY, CR_WAIT, CR_RETURN, CR_TEND = range(12)
+# Hearth g_hearths[4] (24 bytes each); a hearth's state is the level of its light group in the save
+HEARTH_SIZE, H_PROP, H_GROUP, H_IGNORED, H_GLOW, H_AGE = 28, 17, 18, 19, 20, 22
+HS_DEAD, HS_BURNING, HS_LAID = 0, 8, 16
+KEY_MATCHES = 7
+# PropInst g_props[] (16 bytes each)
+PROP_SIZE, PROP_TEX, PROP_LIGHT = 16, 14, 15
 # g_gameSignal
 GS_PLAY, GS_DEAD, GS_EXIT, GS_ENDING = 0, 1, 2, 3
 

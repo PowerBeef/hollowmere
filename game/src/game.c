@@ -27,7 +27,13 @@ _Static_assert(offsetof(SaveState, version) == 5 && offsetof(SaveState, creature
                offsetof(SaveState, doorState) == 64 && offsetof(SaveState, propHidden) == 104 && offsetof(SaveState, script) == 168 &&
                offsetof(SaveState, px) == 208 && offsetof(SaveState, checksum) == 218 && sizeof(SaveState) == 220,
                "SaveState layout: update game/tests/savecheck.py (and bump SAVE_VERSION)");
-_Static_assert(offsetof(Creature, x) == 4 && offsetof(Creature, y) == 8 && offsetof(Creature, timer) == 34, "Creature layout: update game/tests/hm.py");
+_Static_assert(offsetof(Creature, x) == 4 && offsetof(Creature, y) == 8 && offsetof(Creature, timer) == 34 && offsetof(Creature, mode) == 1 &&
+               offsetof(Creature, alert) == 48 && offsetof(Creature, cooldown) == 74 && offsetof(Creature, tendT) == 96,
+               "Creature layout: update game/tests/hm.py");
+_Static_assert(sizeof(Hearth) == 28 && offsetof(Hearth, prop) == 17 && offsetof(Hearth, group) == 18 && offsetof(Hearth, ignored) == 19 &&
+               offsetof(Hearth, glow) == 20 && offsetof(Hearth, age) == 22 && HS_DEAD == 0 && HS_BURNING == 8 && HS_LAID == 16 && KEY_MATCHES == 7,
+               "Hearth layout: update game/tests/hm.py");
+_Static_assert(sizeof(PropInst) == 16 && offsetof(PropInst, tex) == 14 && offsetof(PropInst, light) == 15, "PropInst layout: update game/tests/hm.py");
 _Static_assert(offsetof(Player, hiding) == 16 && offsetof(Player, frozen) == 37, "Player layout: update game/tests/hm.py");
 _Static_assert(offsetof(FxState, slits) == 22, "FxState layout: update game/tests/hm.py");
 _Static_assert(offsetof(Settings, controls) == 2, "Settings layout: update game/tests/hm.py");
@@ -307,6 +313,7 @@ void game_load_level(int level, int fromCheckpoint) {
         int gidx = g_dlights[i].def->group;
         if (gidx < 16) g_dlights[i].level = g_state.lightLevel[gidx] >= 15 ? 256 : g_state.lightLevel[gidx] * 16;
     }
+    hearths_load();          // (after the light groups: a hearth's group holds its state, not a brightness)
     g_lightsDirty = 1;
     creature_init(g_state.creatureMode);
     script_reset();
@@ -473,6 +480,7 @@ void game_update(void) {
     DEV_ONLY(u32 q2 = PNOW();)
     pending_events();
     script_update();
+    hearths_update();
     // a door never swings shut through someone standing in the doorway
     for (int i = 0; i < g_numDoors; i++) {
         Door *d = &g_doors[i];
@@ -527,7 +535,15 @@ void game_render(void) {
 #endif
     g_cam.x = g_player.x; g_cam.y = g_player.y; g_cam.angle = g_player.angle;
     camera_update(&g_cam);
-    world_update_lights(g_frame);
+    // The frame in which the flashlight goes on or off carries its light
+    // tables and the vignette's, and the one after it is drawn before the
+    // governor has answered the lit view: the lamps' flicker step (20,000
+    // cycles every other frame) waits those two out, or together they cost
+    // a frame in the heaviest views.
+    static u8 s_flashWas, s_lightHold;
+    if (g_flashOn != s_flashWas) { s_flashWas = g_flashOn; s_lightHold = 2; }
+    if (s_lightHold && !g_lightsDirty) s_lightHold--;
+    else world_update_lights(g_frame);
     DEV_ONLY(u32 t1 = PNOW();)
     creature_light();
     DEV_ONLY(u32 t2 = PNOW();)

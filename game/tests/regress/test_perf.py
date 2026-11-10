@@ -22,15 +22,19 @@ def frames_of(values):
 def test_flashlight_switch_fits_a_frame(t):
     """Switching the flashlight off and on rebuilt its light tables in the
     frame of the switch (1.2 million cycles: a frame and a half). The tables
-    of each power step are kept now."""
-    L = hm.boot() + hm.dismiss() + ["run 600", "echo off", "tap SELECT 3"] + watch(40)
-    L += ["run 60", "echo on", "tap SELECT 3"] + watch(40)
-    L += ["run 120", f"poke32 {{g_state+{hm.BATTERY}}} 50000", "echo low"] + watch(1200)
-    parts = {k: frames_of(v) for k, v in t.run(L).sections()}
-    for k in ('off', 'on'):
-        worst = max(u + r for u, r in parts[k].values())
-        t.check(worst <= FRAME, f"switching the flashlight {k}: a frame of {worst:,} cycles (the budget is {FRAME:,})")
-    low = [u + r for u, r in parts['low'].values()]
+    of each power step are kept now. And at some moments the switch still
+    cost a frame in the heaviest view, the hall from the front door (858,000
+    cycles in v1.2): when it fell together with the lamps' flicker step,
+    which now waits two frames. Tried at four moments, a tick or more apart."""
+    for wait in (600, 603, 611, 620):
+        L = hm.boot() + hm.dismiss() + [f"run {wait}", "echo quiet"] + watch(40) + ["echo off", "tap SELECT 3"] + watch(40)
+        L += ["run 61", "echo on", "tap SELECT 3"] + watch(40)
+        parts = {k: frames_of(v) for k, v in t.run(L).sections()}
+        for k in ('off', 'on'):
+            worst = max(u + r for u, r in parts[k].values())
+            t.check(worst <= FRAME, f"switching the flashlight {k}, {wait} ticks in: a frame of {worst:,} cycles (the budget is {FRAME:,})")
+    L = hm.boot() + hm.dismiss() + ["run 600", f"poke32 {{g_state+{hm.BATTERY}}} 50000", "echo low"] + watch(1200)
+    low = [u + r for u, r in frames_of(dict(t.run(L).sections())['low']).values()]
     slow = sum(1 for w in low if w > 900000)
     t.check(slow <= len(low) // 40, f"with a flickering, nearly flat battery {slow} of {len(low)} frames cost over 900,000 cycles")
 

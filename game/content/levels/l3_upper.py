@@ -78,7 +78,7 @@ PROPS = [
     on_n('bed_iron', 3.7, 0.0), on_n('bed_iron', 5.0, 0.0), at('nightstand', 4.35, 0.25, 'S'),
     on_w('wardrobe', 3.0, 3.0, inter=('locker',)),
     # east ward
-    on_n('bed_iron', 6.6, 0.0), on_n('bed_iron', 8.3, 0.0), at('dressform', 6.45, 3.45),
+    on_n('bed_iron', 6.6, 0.0), on_n('bed_iron', 8.3, 0.0), at('dressform', 6.42, 3.64),
     on_e('washstand', 9.0, 2.6),
     # bathroom
     at('bathtub', 9.5, 1.0, 'S'), at('stool', 10.2, 0.8, 'W'), on_e('sink', 11.0, 2.8),
@@ -98,10 +98,16 @@ PROPS = [
     # doctor's bedroom
     on_s('bed', 10.0, 10.0),
     at('nightstand', 9.25, 9.65, 'N'), on_w('wardrobe', 9.0, 6.4, inter=('locker',)),
-    at('armchair', 11.4, 6.2, 160),
+    at('armchair', 10.95, 6.75, 162),            # drawn up to the fire
     # doctor's study
     on_n('desk', 12.9, 5.0), at('chair', 12.9, 5.55, 'N'), on_e('bookcase', 14.0, 7.6),
     at('lamp_standard', 12.4, 9.5),
+    # The hearths (game/src/hearth.c): the two wards share a chimney, back to
+    # back; the doctor had his own. (New pieces go last: a save keeps the
+    # furniture a script has hidden by its place in this list.)
+    on_e('fireplace', 6.0, 2.7, inter=('hearth', 12), tex='fire_cold'),
+    on_w('fireplace', 6.0, 2.7, inter=('hearth', 13), tex='fire_cold'),
+    on_e('fireplace', 12.0, 5.9, inter=('hearth', 14), tex='fire_cold'),
 ]
 
 THINGS = [
@@ -116,6 +122,8 @@ THINGS = [
     dict(x=7.5, y=6.0, type='battery'),
     dict(x=1.25, y=6.75, type='doll'), dict(x=3.45, y=6.75, type='bear'), dict(x=0.6, y=9.4, type='rockinghorse'),
     dict(x=10.2, y=0.8, z=0.33, type='candles'),           # on the stool by the bath
+    # (new things go last: a save keeps what was taken by its place in this list)
+    dict(x=11.2, y=2.97, z=0.62, type='matches'),          # on her dresser: what she lights her lantern with
 ]
 
 LIGHTS = [
@@ -124,6 +132,7 @@ LIGHTS = [
     (1.5, 0.3, 8, 3.0), (7.5, 0.3, 8, 3.0), (6.5, 9.7, 9, 3.0), (13.7, 5.5, 8, 2.6),   # moonlight
     (12.4, 9.4, 14, 3.0, 'steady'), (10.2, 0.8, 12, 2.6, 'candle'),
     (1.8, 7.5, 9, 3.0, 'pulse', 3),                               # nursery night-light
+    (5.4, 2.7, 24, 4.5, 'fire', 12), (6.6, 2.7, 24, 4.5, 'fire', 13), (11.4, 5.9, 24, 4.5, 'fire', 14),     # the hearths: dark until lit
 ]
 
 TRIGGERS = [

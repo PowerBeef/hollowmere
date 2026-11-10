@@ -776,6 +776,9 @@ def main():
                 param = 0
             elif ref[0] == 'sign':
                 param = strings.add(ref[1])
+            elif ref[0] == 'num':
+                param = ref[1]
+                check(isinstance(param, int) and 0 <= param <= 255, ln, f"the {it['type']} at ({it['x']:.1f}, {it['y']:.1f}) is given {param!r}: it takes a number from 0 to 255")
             else:
                 param = event(ref[1], f"the {it['type']} at ({it['x']:.1f}, {it['y']:.1f})")
             check(it['type'] in INTER, ln, f"there is no kind of fixture {it['type']!r} (known: {', '.join(INTER)})")
@@ -859,6 +862,10 @@ def main():
     out.h.append(f"#define NUM_LEVELS {len(level_names)}\nextern const LevelDef *const level_table[];")
 
     # ----------------------------------------------------------- strings
+    # (a game's text added in a later version: after the levels' strings,
+    # so that every string an older save may hold by number keeps its number)
+    for nm, txt in getattr(story, 'late_strings', lambda: [])():
+        strings.add(txt, nm)
     def cstr(t):
         return '"' + t.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\x01', '\\001').replace('\x02', '\\002').replace('\x03', '\\003').replace('\x04', '\\004') + '"'
     check_text(strings.items)

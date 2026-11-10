@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""All fixed text in Hollowmere. Order matters for ranges (STR_X_0 .. n)."""
+"""All fixed text in Hollowmere. Order matters for ranges (STR_X_0 .. n), and
+for saves: a save keeps its objective as a string's number, so text added in a
+later version goes in LATE, which is numbered after everything else."""
 
 INTRO = [
     "Autumn, 1958.\n\nWhen my brother Thomas coughed blood at the dinner table, "
@@ -65,7 +67,8 @@ NOTES = [
     # 0
     "Sept 14. The last boat left at six with the doctor and the cook. Sister Hollis would not board. "
     "Says her patients are not finished.\n\n"
-    "Sept 15. Every lamp in the house out except the one under the roof. Heard her singing on the back stair "
+    "Sept 15. Every lamp in the house out except the one under the roof, and every fire: she cannot pass a lit "
+    "hearth, she must kneel to it until it is cold. Heard her singing on the back stair "
     "around two. That tune again. She goes down to the cellar every night now, so I have taken the cellar key "
     "off the board and shut it in the hall clock. She stopped that clock the night she came up out of the water. "
     "She will not go near it.\n\n"
@@ -139,7 +142,8 @@ NOTES = [
     "CUPOLA\n\nNOT THE WATER\n\nDON'T LOOK AT THE WATER\n\n- T.M.",
 ]
 
-KEYS = ["", "Cellar Key", "Boiler Room Key", "Suite Key", "Attic Key", "", "", ""]
+KEYS = ["", "Cellar Key", "Boiler Room Key", "Suite Key", "Attic Key", "", "", "Box of Matches"]
+KEY_MATCHES = 7      # (not a key, but kept like one: what the hearths are lit with, found again on each floor)
 LOCK_HINTS = ["Locked.", "Locked. CELLAR.", "BOILER ROOM - KEEP SHUT. Chalked below it: KEY ON THE LAUNDRY TABLE.",
               "Locked. A brass plate: DR. L. ASHBY.", "Locked. The attic.",
               "Locked.", "Locked.", "Locked."]
@@ -205,6 +209,22 @@ FIXED = [
 ]
 
 
+# Text added since v1.2: numbered after the levels' own strings, so that the
+# numbers v1.2 gave (a save holds its objective's) still mean the same text.
+LATE = [
+    ('P_LIGHT', "\x01 Light the fire"),
+    ('P_SMOTHER', "\x01 Put out the fire"),
+    ('M_FIRE_LIT', "The kindling takes. She will not leave a fire burning."),
+    ('M_FIRE_NOMATCH', "Logs and kindling, laid ready. I have nothing to light them with."),
+    ('M_FIRE_DEAD', "Raked out and cold. It won't take again."),
+    ('M_FIRE_OUT', "I rake the logs apart. The fire sinks."),
+]
+
+
+def late_strings():
+    return list(LATE)
+
+
 def string_list():
     """Returns list of (name, text) with contiguous ranges."""
     out = list(FIXED)
@@ -231,4 +251,5 @@ def string_list():
 
 COUNTS = dict(NUM_INTRO_PAGES=len(INTRO), NUM_ENDING_PAGES=len(ENDING), NUM_NOTES=len(NOTES),
               NUM_DEATH_MSGS=len(DEATHS))
+COUNTS['KEY_MATCHES'] = KEY_MATCHES
 BASES = dict(STR_KEY_BASE='KEY_0', STR_LOCKHINT_BASE='LOCKHINT_0')

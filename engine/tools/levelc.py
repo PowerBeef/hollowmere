@@ -27,8 +27,8 @@ GRID = 64
 
 DIRS = {'E': 0, 'S': 16384, 'W': 32768, 'N': 49152}
 FACE_ANG = {'S': 0, 'W': 64, 'N': 128, 'E': 192}     # prop facing -> u8 angle (model front is +y)
-INTER_TYPES = {'locker': 1, 'fusebox': 2, 'generator': 3, 'exit': 4, 'event': 5, 'sign': 6}
-LIGHT_MODES = {'steady': 0, 'flicker': 1, 'buzz': 2, 'pulse': 3, 'candle': 4}
+INTER_TYPES = {'locker': 1, 'fusebox': 2, 'generator': 3, 'exit': 4, 'event': 5, 'sign': 6, 'hearth': 8}    # (7: the game's own, not a fixture)
+LIGHT_MODES = {'steady': 0, 'flicker': 1, 'buzz': 2, 'pulse': 3, 'candle': 4, 'fire': 5}
 DOOR_FLAGS = {'startopen': 1, 'scripted': 2, 'nomonster': 4}
 EK_WALL, EK_DOOR, EK_ARCH = 1, 2, 3
 
@@ -345,12 +345,15 @@ def parse(mod, ids, models=None):
         if 'inter' not in p:
             continue
         kind, ref = p['inter'][0], (p['inter'][1] if len(p['inter']) > 1 else None)
+        check(kind != 'hearth' or (isinstance(ref, int) and 0 <= ref < limits.MAX_LIGHT_GROUPS), name,
+              f"the hearth {p.get('model')!r} at ({p.get('x')}, {p.get('y')}) is given the light group {ref!r}: it takes one from 0 to {limits.MAX_LIGHT_GROUPS - 1}")
         ang = p.get('angle', 0) * 2 * math.pi / 256
         fx, fy = -math.sin(ang), math.cos(ang)        # model front (+y) in world
         depth = p.get('front', 0.3)
         L.inters.append(dict(x=p['x'] + fx * depth, y=p['y'] + fy * depth, type=kind,
                              ref=(('event', ref) if kind in ('event', 'fusebox', 'generator') and ref
-                                  else ('sign', ref) if kind == 'sign' else None),
+                                  else ('sign', ref) if kind == 'sign'
+                                  else ('num', ref) if kind == 'hearth' else None),       # (a hearth's light group)
                              normal=(fx, fy) if depth >= 0 else (-fx, -fy), prop=L.props.index(p),
                              hide=(p['x'] + fx * 0.05, p['y'] + fy * 0.05, p.get('angle', 0))))
 

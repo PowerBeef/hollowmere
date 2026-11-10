@@ -141,7 +141,7 @@ static const char *prompt_text(void) {
         case THING_FUSE: return game_str(STR_P_FUSE);
         case THING_KEY: return game_str(STR_P_KEY);
         case THING_NOTE: return game_str(STR_P_NOTE);
-        default: return game_str(STR_P_TAKE);
+        default: return game_str(STR_P_TAKE);       // (the matches too)
         }
     }
     case TGT_DOOR: {
@@ -158,6 +158,11 @@ static const char *prompt_text(void) {
         case INTER_EXIT: return game_str(STR_P_EXIT);
         case INTER_SIGN: return game_str(STR_P_EXAMINE);
         case INTER_EVENT: return game_str(STR_P_EXAMINE);
+        case INTER_HEARTH: {
+            int st = hearth_state(hearth_of_inter(g_target.idx));
+            if (st == HS_BURNING) return game_str(STR_P_SMOTHER);
+            return st == HS_LAID && ((g_state.keys >> KEY_MATCHES) & 1) ? game_str(STR_P_LIGHT) : game_str(STR_P_EXAMINE);
+        }
         }
         return 0;
     }
@@ -220,6 +225,9 @@ static void interact(void) {
             snd_play(SND_PICKUP, 150, 0, 0, 160);
             game_message(g_state.fuses + g_state.fusesPlaced >= 3 ? STR_M_FUSE3 : (g_state.fuses + g_state.fusesPlaced == 2 ? STR_M_FUSE2 : STR_M_FUSE1), 160);
             break;
+        case THING_MATCHES:                       // kept like a key: on this floor, under its own name
+            t->param = KEY_MATCHES;
+            // fall through
         case THING_KEY: {
             g_state.keys |= 1 << t->param;
             snd_play(SND_PICKUP, 150, 0, 0, 160);
@@ -291,6 +299,7 @@ static void interact(void) {
         switch (it->type) {
         case INTER_LOCKER: hide_enter(g_target.idx); break;
         case INTER_SIGN: game_message(it->param | (it->strHi << 8), 220); break;
+        case INTER_HEARTH: hearth_use(hearth_of_inter(g_target.idx)); break;
         default: if (!script_running(it->param)) script_start(it->param); break;     // (not twice at once)
         }
         break; }

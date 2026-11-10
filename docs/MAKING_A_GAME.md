@@ -79,7 +79,7 @@ MAKER_CODE := 00            # two characters; 00 is homebrew
 | `furniture.py` | `MODELS`: name → function returning a `meshkit.Mesh`; `build_all()` | must include the two door-leaf models |
 | `props.py` | `PROPS`: name → `dict(fn, w, h, ww, wh, zoff, solid, fullbright, glint)` | the sprites of `THINGS`; `add_glint()` if any has `glint` |
 | `sounds.py` | `SOUNDS`: name → `(function, loops)`; the function returns `(samples in -1..1, loop start or None)` | at least one |
-| `story.py` | `string_list()`: `(NAME, text)` pairs, each becoming `STR_NAME` | optional `COUNTS`, `BASES` dicts of extra `#define`s |
+| `story.py` | `string_list()`: `(NAME, text)` pairs, each becoming `STR_NAME` | optional `COUNTS`, `BASES` dicts of extra `#define`s; `late_strings()`: more pairs, numbered after the levels' own strings (text added in a later version: a save holds its objective as a string's number) |
 | `music.py` | `SEQUENCES`: name → function returning `(notes, frames)` | optional |
 | `images.py` | `IMAGES`, `render()` | optional: full-screen pictures with their own palettes |
 
@@ -152,11 +152,11 @@ A door or arch needs a room on both sides. A wall that touches nothing at either
 
 **`DECOR`** hangs flat decorations on walls, painted into the wall texture: `(x, y, side, kind)`; the kinds are whatever the game's `walltex.ensure` knows for `deco:`.
 
-**`PROPS`** places 3D models. `at(model, x, y, facing)` stands one anywhere; `on_n` / `on_s` / `on_w` / `on_e` put it flush against that wall facing into the room. Options: `name=` (for scripts), `z=`, `tex=` (the model's instance texture), `light=`, `inter=('locker',)` (a hiding place), `inter=('event', 'name')`, `inter=('sign', "text")`, `front=` (how far in front the interaction is).
+**`PROPS`** places 3D models. `at(model, x, y, facing)` stands one anywhere; `on_n` / `on_s` / `on_w` / `on_e` put it flush against that wall facing into the room. Options: `name=` (for scripts), `z=`, `tex=` (the model's instance texture), `light=`, `inter=('locker',)` (a hiding place), `inter=('event', 'name')`, `inter=('sign', "text")`, `inter=('hearth', n)` (a fixture that carries a number for the game's code: Hollowmere's hearths, with their light group), `front=` (how far in front the interaction is).
 
 **`THINGS`** are sprites and items: `dict(type=, x=, y=, z=, param=, event=, name=, hidden=)`. `type` is a name of `props.PROPS`; `event` starts when the game says the thing was taken.
 
-**`LIGHTS`**: `(x, y, brightness 0..31, radius under 16 tiles[, mode[, group 0..15]])`. Modes: `steady`, `flicker`, `buzz`, `pulse`, `candle`. Steady lights of group 0 are baked; the others (at most 20 a level) flicker or can be switched by scripts through their group. `AMBIENT_LIGHT` adds a floor under everything.
+**`LIGHTS`**: `(x, y, brightness 0..31, radius under 16 tiles[, mode[, group 0..15]])`. Modes: `steady`, `flicker`, `buzz`, `pulse`, `candle`, `fire`. Steady lights of group 0 are baked; the others (at most 20 a level) flicker or can be switched by scripts through their group. `AMBIENT_LIGHT` adds a floor under everything.
 
 **`TRIGGERS`**: `(x0, y0, x1, y1, 'event'[, once[, 'flag' or '!flag']])`. The event starts when the player **walks into** the cell rectangle; with `once=0` it starts again on every entry (not on every tick spent inside).
 

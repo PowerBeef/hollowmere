@@ -47,23 +47,28 @@ Explore the manor floor by floor and piece together what happened from the notes
 
 ### The Night Sister
 
-<img src="docs/media/door.gif" width="480" align="right" alt="The Night Sister opens the drawing room door and comes in">
-
 She walks the house at night with a lantern, and she is drawn to light and noise.
 
 - **She sees.** Your flashlight shows you the way and shows her where you are.
 - **She hears.** Running is fast and loud, and she hears it from five tiles away.
 - **She remembers.** Lose her and she goes to where she last saw you, and searches the room.
 - **She opens doors.** A closed door buys you a moment. No more.
+- **She cannot leave a fire burning.** Light a hearth and she will come to it, kneel, and stay until it is cold.
+
+<table>
+<tr>
+<td><img src="docs/media/door.gif" alt="The Night Sister opens the drawing room door and comes in"></td>
+<td><img src="docs/media/fire.gif" alt="The Night Sister kneels to the drawing room fire until it is out"></td>
+</tr>
+</table>
 
 Hide in a wardrobe and watch her through the slats. Hold still in the dark. Keep your light low, and never let her count you.
-
-<br clear="all">
 
 ### What is in it
 
 - **Four chapters**: the house, the cellars, the wards upstairs and the attic chapel
 - **A light to ration**: the flashlight's battery runs down, and spare batteries have to be found
+- **Fires to light**: a box of matches makes a dark room a warm one, and makes bait. She comes to every fire, so one lit at the far end of the house buys you this end
 - **A map that fills in** as you explore, and a journal of every note you find
 - **Checkpoints** saved to the cartridge, in a way that survives switching off mid-save
 - **A world made from code**: every texture, model, sound and note of music is generated, none drawn or recorded
@@ -120,7 +125,7 @@ Everything above is drawn by the Hollowmere Engine: a software renderer for the 
 
 - **Buildings, not mazes.** Walls sit on the edges of a grid, so rooms share thin walls the way real ones do, with doorways, arches and windows you can see through, three deep. Rooms are two tiles tall, with textured floors and ceilings.
 - **Real 3D objects.** Furniture, props and door leaves are textured polygon meshes, depth-sorted and clipped against the walls. Doors swing on their hinges.
-- **Light as a game mechanic.** A flashlight cone, a light level per cell, and scripted lights that flicker, pulse and go out.
+- **Light as a game mechanic.** A flashlight cone, a light level per cell, and lights that flicker, pulse, burn like a fire and go out, switched by scripts or by the game's own rules.
 - **Sound in space.** A stereo software mixer with positional 3D sound and a music sequencer.
 - **Scripted events.** A small bytecode machine runs eight scripts at once: doors, lights, sounds, messages, the enemy, cutscenes.
 - **The rest of a game.** Collision, line of sight, locks and keys, triggers and pickups, a HUD, map data, and saves that survive a power cut.
@@ -196,17 +201,17 @@ A headless [mGBA](https://mgba.io) harness scripts input, reads and writes memor
 | | |
 |---|---|
 | Playthrough | the whole game from power-on to the ending, asserting progress at every stage, also with a death in every chapter |
-| Regression tests | 43, one for every bug fixed and behaviour added |
-| View sweep | every place the player can stand, 20,368 views at three detail levels: no pixel left undrawn |
+| Regression tests | 46, one for every bug fixed and behaviour added |
+| View sweep | every place the player can stand, 20,280 views at three detail levels: no pixel left undrawn |
 | Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside): each must end in a running game |
-| Content limits | 47 kinds of bad content, each refused by the asset tools in one line |
+| Content limits | 48 kinds of bad content, each refused by the asset tools in one line |
 | Stack, frame rate, boot | stack headroom from a canary painted at boot, frame rate at benchmark views, the release ROM through a minute of random input |
 
 A new game gets the same harness and every check that applies to it. Details in [docs/TOOLS.md](docs/TOOLS.md).
 
 ### What to know before you build on it
 
-- **Not every view holds 20 fps.** Of 3,396 places and headings sampled in Hollowmere, 62 fall below 19.5 fps and 17 of those stay at 15: close views of the hall staircase and the chapel's pews, where furniture covers the screen several times over. Three quarters of all views run at full detail.
+- **Not every view holds 20 fps.** Of 3,381 places and headings sampled in Hollowmere, 70 fall below 19.5 fps and 18 of those stay at 15: close views of the hall staircase and the chapel's pews, where furniture covers the screen several times over. Three quarters of all views run at full detail. Furniture is the expensive thing to draw: a fireplace filling the view costs several detail levels.
 - **It has only been run in an emulator.** Every timing is from mGBA 0.10.2, which may read video memory faster than a console does.
 - **It has limits**: 40 doors and 160 props a level, 128 vertices a model, 8 scripts at once. They are all in [`limits.h`](engine/src/limits.h), and the tools tell you when you reach one.
 

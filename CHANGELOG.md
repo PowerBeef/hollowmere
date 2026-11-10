@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.3
+
+Fire. The fireplaces were painted embers with a faint flicker; they are hearths now, and the first new thing to do in the house since v1.0.
+
+- **Hearths are laid and cold until you light them.** With the box of matches from the kitchen stove (upstairs, the one on the Night Sister's dresser), A at a hearth lights it: flames in the firebox, a warm light that fills the room, the crackle of the logs. A again rakes it out; it can be lit again.
+- **She cannot leave a fire burning.** Once she walks a floor, a fire brings her within seconds if she is away, and wherever she is on her rounds she goes to it, sets her lantern down, kneels until it is cold, gets up and searches the room. What she has put out is ash: it will not light again. The housekeeper's ledger says as much, in one new line.
+- **So a fire is a tool, and a risk.** It lights a room without the flashlight, and she sees you sooner in its light. It draws her to one end of the house while you cross the other, and it calls her when she was not there at all.
+- Six hearths: the drawing room, the dining room and the study downstairs; upstairs, new ones in the two wards (back to back on one chimney) and in the doctor's bedroom. Upstairs the dress form in the east ward and the doctor's armchair moved a little to make room. No wall or door changed.
+- **Fixed: she could come back on her rounds shut in the doctor's suite.** One of the upper floor's patrol nodes is behind its locked door; starting there (two or three returns of fourteen with the player in the west ward) she walked up and down inside until the player unlocked it. She now starts only where the rest of her rounds can be reached.
+
+- **Fixed: switching the flashlight could still cost a frame.** In the heaviest view (the hall from the front door) the switch sometimes fell together with the lamps' flicker step: 858,000 cycles against the 842,688 a frame has. The flicker now waits two frames around a switch; the worst measured is under 800,000.
+
+Saves from v1.2 load as they were, with every hearth cold: new text, things and furniture are numbered after the old.
+
+### Known limits
+
+- Frame rate, measured again on all four floors: of 3,381 places and headings, 70 fall below 19.5 fps (v1.1: 62 of 3,396) and 18 of them stay at 15 fps (17). Three quarters of all views run at full detail, as before.
+- A fireplace seen from close up is costly to draw. The views of the three new hearths upstairs run at a lower detail level than the bare walls they replaced: 78% of that floor's views are at full detail, where 86% were. The one new view at 15 fps is a corner of the west ward, standing against the wardrobe.
+- Still measured in the mGBA emulator only.
+
+### For people building on the engine
+
+- A light mode `fire`: slow swells with a gutter now and then, beside `candle`'s shimmer.
+- A fixture kind that carries a number (`inter=('hearth', group)`), and `late_strings()` in a game's `story.py`: text added in a later version, numbered after everything else so that older saves' string numbers keep their meaning.
+- The fireplace shows how a game animates a prop: its front face takes the instance's texture, and the game sets that every few ticks (`game/src/hearth.c`).
+- A light that is out (level 0) costs nothing in the flicker step; it used to have its rectangle of the light grid put back ten times a second.
+- Two tests no longer depend on the moment they run at: the flashlight test tries four timings (and fails on v1.2), and the lantern-trail test looks at the lamps sixty times, not ten, before it calls a flicker a trail.
+
 ## v1.2
 
 The Night Sister moves. She had walk and run cycles and four still poses; the stills are now animations: 360 pre-rendered frames where there were 155.

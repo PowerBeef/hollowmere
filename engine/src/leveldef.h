@@ -47,7 +47,7 @@ typedef struct {
     u8  mode;        // LIGHT_* flicker mode
     u8  group;       // script control group
 } LightDef;
-enum { LIGHT_STEADY = 0, LIGHT_FLICKER, LIGHT_BUZZ, LIGHT_PULSE, LIGHT_CANDLE };
+enum { LIGHT_STEADY = 0, LIGHT_FLICKER, LIGHT_BUZZ, LIGHT_PULSE, LIGHT_CANDLE, LIGHT_FIRE, NUM_LIGHT_MODES };
 
 typedef struct {
     u16 x, y;        // 1/256 tile: where the interaction happens

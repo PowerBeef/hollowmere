@@ -81,7 +81,7 @@ PROPS = [
     at('lamp_standard', 4.4, 5.4),
     at('chest', 7.3, 10.78, 'N'),                # under the window
     # drawing room
-    on_w('fireplace', 0.0, 7.5),
+    on_w('fireplace', 0.0, 7.5, inter=('hearth', 12), tex='fire_cold'),
     at('sofa', 1.75, 7.5, 'W'),
     at('armchair', 1.0, 6.2, 176),
     at('armchair', 1.0, 8.8, 80),
@@ -91,14 +91,14 @@ PROPS = [
     at('table_dining', 11.5, 7.5, 'S', inter=('sign', "A place card at the head of the table, in a careful hand: MR. T. MARSH."), front=0.5),
     at('chair', 10.85, 6.95, 'S'), at('chair', 11.5, 6.9, 'S'), at('chair', 12.15, 6.95, 'S'),
     at('chair', 10.85, 8.05, 'N'), at('chair', 11.5, 8.1, 'N'), at('chair', 12.2, 8.15, 132),
-    on_e('fireplace', 14.0, 7.5),
+    on_e('fireplace', 14.0, 7.5, inter=('hearth', 13), tex='fire_cold'),
     on_n('dresser', 9.6, 5.0),
     # library
     at('table_round', 2.0, 1.8), at('armchair', 1.33, 1.33, 224), at('armchair', 2.6, 2.4, 96),
     at('lamp_standard', 3.55, 0.45),
     # study
     on_n('desk', 5.4, 0.0), at('chair', 5.4, 0.62, 'N'),
-    on_w('fireplace', 4.0, 2.2),
+    on_w('fireplace', 4.0, 2.2, inter=('hearth', 14), tex='fire_cold'),
     on_e('bookcase', 7.0, 1.6),
     at('armchair', 6.4, 3.3, 112),
     # kitchen
@@ -125,6 +125,8 @@ THINGS = [
     dict(x=5.68, y=0.2, z=0.52, type='telephone'),              # study desk (its line is cut)
     dict(x=0.45, y=9.55, type='battery'),                      # drawing room, in the corner under the window
     dict(x=13.4, y=3.55, z=0.32, type='note', param=2),        # butler's chest: the wardrobe note
+    # (new things go last: a save keeps what was taken by its place in this list)
+    dict(x=9.95, y=0.27, z=0.58, type='matches'),               # on the kitchen stove
 ]
 
 LIGHTS = [
@@ -132,13 +134,14 @@ LIGHTS = [
     (5.5, 4.8, 15, 3.0, 'flicker', 1), (9.5, 4.8, 15, 3.0, 'steady', 1),     # corridor sconces
     (3.5, 4.2, 14, 2.8, 'steady', 1), (8.5, 5.2, 14, 2.8, 'steady', 1),
     (1.75, 6.35, 13, 2.8, 'candle'),             # drawing-room candles
-    (0.6, 7.5, 17, 3.4, 'candle'),               # the fire
+    (0.6, 7.5, 25, 5.0, 'fire', 12),             # the drawing-room fire (the hearths' lights: dark until lit, game/src/hearth.c)
     (11.5, 7.5, 14, 3.2, 'candle'),              # dining candles
-    (13.4, 7.5, 13, 2.6, 'candle'),              # dining fire embers
+    (13.4, 7.5, 25, 5.0, 'fire', 13),            # the dining-room fire
     (10.2, 0.6, 12, 2.6, 'candle'),              # stove embers
     (0.3, 1.5, 8, 2.8), (13.7, 7.0, 8, 3.0), (6.5, 10.6, 9, 3.0), (0.3, 7.0, 8, 3.0),   # moonlight
     (3.55, 0.5, 14, 3.0, 'steady', 1),           # library reading lamp
     (4.4, 5.4, 14, 3.0, 'steady', 1),            # hall standard lamp
+    (4.6, 2.2, 24, 4.5, 'fire', 14),             # the study fire
 ]
 
 TRIGGERS = [

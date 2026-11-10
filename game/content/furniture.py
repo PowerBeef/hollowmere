@@ -324,7 +324,8 @@ def barrel():
 @model('fireplace')
 def fireplace():
     m = Mesh('fireplace')
-    m.box(-0.55, 0, 0, 0.55, 0.2, 0.72, 'marble', front='fireplace_front', decal='s', skip='btn')
+    # (its front is the instance's own texture: fire_cold, fire_a..c or fire_dead, set by game/src/hearth.c)
+    m.box(-0.55, 0, 0, 0.55, 0.2, 0.72, 'marble', front=255, decal='s', skip='btn')
     m.box(-0.62, 0, 0.72, 0.62, 0.28, 0.77, 'marble', skip='bn')
     m.box(-0.5, 0.2, 0, 0.5, 0.36, 0.02, 'stone_block', skip='bn')       # hearth
     m.boxes = [(-0.55, 0, 0.55, 0.3)]

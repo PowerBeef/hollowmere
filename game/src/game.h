@@ -4,14 +4,15 @@
 #define GAME_H
 #include "game_api.h"       // the engine's side: SaveState, Thing, scripts, save, the frame loop, the hooks defined in game.c
 
-#define GAME_VERSION "v1.2"         // on the title screen
+#define GAME_VERSION "v1.3"         // on the title screen
 #define SAVE_MAGIC 0x484C5733u      // "HLW3"
 
 extern SaveState g_checkpoint;
 extern u8 g_hasCheckpoint;
 
 // interactables
-enum { INTER_NONE = 0, INTER_LOCKER, INTER_FUSEBOX, INTER_GENERATOR, INTER_EXIT, INTER_EVENT, INTER_SIGN, INTER_CREATURE };
+enum { INTER_NONE = 0, INTER_LOCKER, INTER_FUSEBOX, INTER_GENERATOR, INTER_EXIT, INTER_EVENT, INTER_SIGN, INTER_CREATURE,
+       INTER_HEARTH };       // (the numbers engine/tools/levelc.py gives the kinds of fixture)
 
 // --------------------------------------------------------------- player
 typedef struct {
@@ -43,7 +44,8 @@ typedef struct { u8 kind; u8 idx; } Target;
 extern Target g_target;
 
 // ------------------------------------------------------------- creature
-enum { CR_OFF = 0, CR_SCRIPT, CR_PATROL, CR_INVESTIGATE, CR_CHASE, CR_SEARCH, CR_LEAVE, CR_KILL, CR_PRAY, CR_WAIT, CR_RETURN };
+enum { CR_OFF = 0, CR_SCRIPT, CR_PATROL, CR_INVESTIGATE, CR_CHASE, CR_SEARCH, CR_LEAVE, CR_KILL, CR_PRAY, CR_WAIT, CR_RETURN,
+       CR_TEND };            // going to a fire that burns, and kneeling to it until it is out
 typedef struct {
     u8  state;
     u8  mode;          // level presence mode: 0 scripted only, 1 roaming, 2 aggressive
@@ -75,6 +77,8 @@ typedef struct {
     s32 prayX, prayY;
     u16 prayAngle;
     u8  doorPush;      // 1 + how far the door she is pushing has opened, in quarters (0: not at a door)
+    u8  tend;          // CR_TEND: the hearth she is making for
+    s16 tendT;         // ... and how long she has been at it (0: still on her way)
 } Creature;
 extern u16 g_crFrame;       // the frame of her sprite sheets drawn last (creature_sprite)
 extern Creature g_cr;
@@ -109,6 +113,33 @@ void creature_hear(s32 x, s32 y, s32 radius);
 void creature_goto(s32 x, s32 y);
 int  creature_sprite(RSprite *s);
 void creature_light(void);
+
+// hearths (hearth.c): the fireplaces of a level, each with a fire the player
+// can light and put out, and the Night Sister puts out for good. A hearth's
+// state is kept in the save as the level of its light group.
+enum { HS_DEAD = 0, HS_BURNING = 8, HS_LAID = 16 };   // (16 is what a new level, and a save from before there were fires, has)
+typedef struct {
+    s32 x, y;          // where it is used from, a step out from the wall
+    s32 sx, sy;        // where she kneels to it
+    u8  inter, prop, group;
+    u8  ignored;       // she could not get to it (a locked door): she leaves it be for a while (counts down, x64 ticks)
+    s16 glow;          // how bright it is now, 0..256
+    u16 age;           // ticks it has burnt
+    u8  pic;           // which of the three pictures of flames it shows
+    u8  shown;         // the state its looks were last set for
+    u8  dl[2];         // its lights among g_dlights (0xFF: none)
+} Hearth;
+#define MAX_HEARTHS 4
+extern Hearth g_hearths[MAX_HEARTHS];
+extern int g_numHearths;
+void hearths_load(void);
+void hearths_update(void);
+int  hearth_of_inter(int inter);        // the hearth a fixture is, or -1
+int  hearth_state(int h);               // HS_*
+void hearth_use(int h);                 // the player at it: light it, put it out, or look at it
+void hearth_smother(int h);             // her: out, and not to be lit again
+int  hearth_calling(s32 x, s32 y);      // the nearest fire that has burnt long enough to be noticed from there, or -1
+int  hearth_burning(void);              // is any alight?
 
 // things
 void things_load(const LevelDef *L);

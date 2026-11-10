@@ -17,6 +17,13 @@ s16 g_fear;
 #define SPD_SEARCH  1300
 #define SPD_SCRIPT  1000
 #define CATCH_DIST  0xA000     // 0.625 tiles
+// kneeling to a fire (CR_TEND), in ticks: down on her knees, there (the fire
+// is out TEND_OUT ticks in), up again. Down and up are the six pictures of
+// rising from prayer, six ticks each.
+#define TEND_DOWN   36
+#define TEND_KNEEL  150
+#define TEND_OUT    70
+#define TEND_UP     36
 
 // Her flow field (engine/src/flow.h): the steps from every cell to the cell
 // she is making for. A new one is worked out a few cells per tick in the
@@ -244,6 +251,7 @@ void creature_hear(s32 x, s32 y, s32 radius) {
         if (radius < (5 << 16)) return;
         g_cr.state = CR_INVESTIGATE;
     }
+    if (g_cr.state == CR_TEND && g_cr.tendT > 0 && radius < (5 << 16)) return;      // kneeling to a fire: as deaf as at prayer
     // close loud noises trigger a chase immediately
     if (d < (4 << 16) && radius >= (6 << 16) && !g_player.hiding) {
         g_cr.state = CR_CHASE; g_cr.alert = 256; g_cr.lastX = x; g_cr.lastY = y; g_cr.lostTimer = 0;
@@ -436,6 +444,18 @@ static void footstep(void) {
 }
 
 // ------------------------------------------------------------- update
+// Is this a place she could not leave? A patrol node behind a door locked
+// to her (the doctor's suite, until the player opens it) is no place to
+// start her rounds: she would walk up and down in there and never come
+// out, whatever she heard or saw burning. She starts only where the first
+// node of her rounds can be reached from. (The whole search at once: she is
+// not about, and this is asked once per return.)
+static int shut_in(s32 x, s32 y) {
+    s_fieldOk = 0;
+    build_field((g_level->patrol[0].y << 5) | g_level->patrol[0].x);
+    return s_field[cell_of(x, y)] == 255;
+}
+
 static void to_chase(void) {
     if (g_cr.state != CR_CHASE) {
         if (!g_cr.screamed || g_cr.timer < -600) {
@@ -454,12 +474,13 @@ void creature_update(void) {
         // roaming modes: she comes back on patrol after a while (mode 3, at
         // prayer, is placed by the level's scripts and nowhere else)
         if ((g_cr.mode == 1 || g_cr.mode == 2) && g_level->numPatrol) {
+            if (g_cr.cooldown > 300 && hearth_burning()) g_cr.cooldown = 300;      // a fire brings her within five seconds
             if (g_cr.cooldown > 0) g_cr.cooldown--;
             else {
                 int n = pick_patrol_node(1);
                 if (n >= 0) {
                     s32 x = (g_level->patrol[n].x << 16) + 0x8000, y = (g_level->patrol[n].y << 16) + 0x8000;
-                    if (dist_approx(x - p->x, y - p->y) > (8 << 16) && !world_los(x, y, p->x, p->y))
+                    if (dist_approx(x - p->x, y - p->y) > (8 << 16) && !world_los(x, y, p->x, p->y) && !shut_in(x, y))
                         creature_spawn(x, y, CR_PATROL);
                     else g_cr.cooldown = 120;
                 }
@@ -482,7 +503,8 @@ void creature_update(void) {
         g_cr.alert -= 2;
     }
     if (g_cr.alert >= 256 && g_cr.state != CR_SCRIPT) to_chase();
-    else if (rate && g_cr.alert > 110 && (g_cr.state == CR_PATROL || g_cr.state == CR_SEARCH || g_cr.state == CR_LEAVE || g_cr.state == CR_RETURN)) {
+    else if (rate && g_cr.alert > 110 && (g_cr.state == CR_PATROL || g_cr.state == CR_SEARCH || g_cr.state == CR_LEAVE || g_cr.state == CR_RETURN ||
+                                          (g_cr.state == CR_TEND && g_cr.tendT == 0))) {      // (on her way to a fire; kneeling to it, only a certainty moves her)
         // something caught her eye: turn and approach
         g_cr.state = CR_INVESTIGATE;
         g_cr.timer = 0;
@@ -490,6 +512,16 @@ void creature_update(void) {
     }
     if (g_cr.state == CR_CHASE && g_cr.hasLOS && (!p->hiding || g_cr.knowsHiding)) {
         g_cr.lastX = p->x; g_cr.lastY = p->y; g_cr.lostTimer = 0;
+    }
+
+    // A fire is burning: on her rounds, or on her way out, she turns to it
+    // once it has burnt long enough for her to have noticed (hearth.c).
+    if ((g_frame & 15) == 0 && (g_cr.state == CR_PATROL || g_cr.state == CR_LEAVE)) {
+        int h = hearth_calling(g_cr.x, g_cr.y);
+        if (h >= 0) {
+            g_cr.state = CR_TEND; g_cr.tend = h; g_cr.tendT = 0;
+            set_goal(g_hearths[h].sx, g_hearths[h].sy);
+        }
     }
 
     g_cr.pathAge++;
@@ -584,6 +616,31 @@ void creature_update(void) {
             g_cr.alert = 0;
         }
         break;
+    case CR_TEND: {
+        // To the hearth; there she sets her lantern down and kneels (the
+        // pictures of rising from prayer, backwards), stays on her knees
+        // while the fire goes out under her, gets up, and looks about the
+        // room for whoever lit it.
+        const Hearth *h = &g_hearths[g_cr.tend];
+        if (g_cr.tendT == 0) {
+            speed = SPD_INVEST;
+            int r = move_toward_goal(speed);
+            if (r == 2) { g_hearths[g_cr.tend].ignored = 20; g_cr.state = CR_PATROL; g_cr.timer = 1; }   // no way to it: she tries again in twenty seconds
+            else if (r == 1) g_cr.tendT = 1;
+            break;
+        }
+        g_cr.moving = 0;
+        face_toward(h->x - g_cr.x, h->y - g_cr.y, 900);
+        if (held) break;
+        if (++g_cr.tendT == TEND_DOWN + TEND_OUT) hearth_smother(g_cr.tend);
+        if (g_cr.tendT >= TEND_DOWN + TEND_KNEEL + TEND_UP) {
+            g_cr.state = CR_SEARCH;
+            g_cr.timer = 420; g_cr.lookTimer = 50;
+            g_cr.lookAngle = g_cr.angle + 32768;          // she turns to the room
+            g_cr.lastX = g_cr.x; g_cr.lastY = g_cr.y;
+            if (g_cr.alert < 60) g_cr.alert = 60;
+        }
+        break; }
     case CR_PRAY:
         g_cr.moving = 0;
         if (held) break;                 // (her prayer waits out the scene too)
@@ -657,6 +714,11 @@ int creature_sprite(RSprite *s) {
         // feet), and down on her knees again over the last 36
         int k = 170 - g_cr.timer < CR_RISE_N * 6 ? (170 - g_cr.timer) / 6 : g_cr.timer / 6;
         f = CRF_RISE + view * CR_RISE_N + (k < 0 ? 0 : k);
+    } else if (g_cr.state == CR_TEND && g_cr.tendT > 0) {
+        int t = g_cr.tendT;
+        if (t < TEND_DOWN) f = CRF_RISE + view * CR_RISE_N + (CR_RISE_N - 1 - t / 6);
+        else if (t < TEND_DOWN + TEND_KNEEL) f = CRF_KNEEL + view * CR_KNEEL_N + (g_frame / 28) % CR_KNEEL_N;
+        else { int k = (t - TEND_DOWN - TEND_KNEEL) / 6; f = CRF_RISE + view * CR_RISE_N + (k < CR_RISE_N ? k : CR_RISE_N - 1); }
     } else if (g_cr.doorPush) {
         f = CRF_DOOR + view * CR_DOOR_N + (g_cr.doorPush - 1);                   // her free hand on the door she is opening
         s->worldW = CR_WORLD_WW;

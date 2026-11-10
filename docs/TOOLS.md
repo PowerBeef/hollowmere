@@ -81,7 +81,7 @@ One command is taken per logic update: leave eight frames between two. `sweep.py
 
 | Step | Tool | What must hold |
 |---|---|---|
-| limits | `contentcheck.py` | the asset tools refuse 47 kinds of bad content, each in its own words, and accept 14 inputs at the limits (run with `python3 -O`, where a check written as `assert` would pass everything) |
+| limits | `contentcheck.py` | the asset tools refuse 48 kinds of bad content, each in its own words, and accept 14 inputs at the limits (run with `python3 -O`, where a check written as `assert` would pass everything) |
 | cache | `cachecheck.py` | a truncated cache entry is rebuilt, writes are whole, unused entries are pruned |
 | audit | `audit.py [level ...]` | no furniture through walls or in doorways, no door swinging into furniture, no decoration hidden, no item floating or sunk |
 | text | `textcheck.py` | every script message and sign fits the HUD as `hud.c` draws it; then the game's `tests/textrules.py` (Hollowmere: notes, intro pages, chapter cards, the map heading) |
@@ -90,8 +90,8 @@ One command is taken per logic update: leave eight frames between two. `sweep.py
 | selftest | `selftest.py OUT` | the harness itself fails when it should: exit 1, 2 and 3 on scripts and ROMs that are wrong on purpose |
 | boot | `bootcheck.py OUT` | the release ROM boots, draws frames, survives a minute of random input with no emulator error and carries no test symbol |
 | playthrough | `tests/playtest.py OUT [--deaths]` | Hollowmere from power-on to the ending, asserting level, keys and fuses at every stage of the critical path; `--deaths` dies once in every chapter |
-| regress | `regress.py OUT [name ...]` | the game's `tests/regress/test_*.py`: one test per bug fixed or behaviour added (Hollowmere: 43) |
-| sweep | `sweep.py OUT [--every N] [--level L]` | no pixel of the 3D view is left undrawn, from every place the player can stand: 20,368 views at three detail levels (`--quick`: every 12th) |
+| regress | `regress.py OUT [name ...]` | the game's `tests/regress/test_*.py`: one test per bug fixed or behaviour added (Hollowmere: 46) |
+| sweep | `sweep.py OUT [--every N] [--level L]` | no pixel of the 3D view is left undrawn, from every place the player can stand: 20,280 views at three detail levels (`--quick`: every 12th) |
 | fps | `fps.py OUT [--turn] [--min FPS]` | the game's benchmark views (`tests/views.py`) hold its `MIN_FPS` |
 | stack | `stackcheck.py OUT [--min BYTES]` | at least 256 bytes of the main stack are never touched (a canary painted at boot) |
 | saves | `tests/savecheck.py OUT` | Hollowmere boots a running game from 43 save files: blank, random, cut off mid-write, checksum-valid but out of range, and a real v1.0 save |
