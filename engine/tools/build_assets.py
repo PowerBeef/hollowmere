@@ -123,16 +123,18 @@ def main():
     sec = []
     for i in range(4096):
         c = abs(np.cos(2 * np.pi * i / 4096))
-        v = 0x7FFFFFF if c < 1e-6 else min(0x7FFFFFF, int(round(65536 / c)))
+        v = 0x7FFFFFF if c < 1e-6 else min(0x7FFFFFE, int(round(65536 / c)))     # 0x7FFFFFF: SEC_NEVER in render.iwram.c
         sec.append(v)
     out.carray('u32', 'sec4096', sec)
     PLANE = lighttables.PLANE
     ra, rf = [], []
     for col in range(lighttables.VIEW_W):
         cx = ((2 * col + 1) * 16384 // lighttables.VIEW_W - 16384) / 16384.0
-        a_ = np.arctan(cx * PLANE)
-        ra.append(int(round(a_ / (2 * np.pi) * 65536)) & 0xFFFF)
-        rf.append(int(round(np.cos(a_) * 16384)))
+        # each column's ray, on the 4096 steps to the turn the walls are cast
+        # with (the camera's own angle is rounded to them too: lu_sin4)
+        step = int(round(np.arctan(cx * PLANE) / (2 * np.pi) * 4096))
+        ra.append((step * 16) & 0xFFFF)
+        rf.append(int(round(np.cos(step * 2 * np.pi / 4096) * 16384)))
     out.carray('u16', 'ray_angle', ra)
     out.carray('s16', 'ray_fishcos', rf)
     LH = 2 * lighttables.FOCAL           # wall height 2 tiles

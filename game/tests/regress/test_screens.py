@@ -128,3 +128,29 @@ def test_jumpscare_has_no_miscoloured_frame(t):
             continue                                    # the flash
         known = sum(n for n, c in cols if c in usual)
         t.check(known >= 240 * 160 * 0.85, f"frame {i - k} before her face: only {known * 100 // 38400}% of it in the view's own colours")
+
+
+def test_shake_and_roll_stay_inside_the_view(t):
+    """A strong shake, the walking bob and the roll of the death scene never
+    bring the rows beyond the 3D view (the renderer's tables) on screen."""
+    ROW0, ROW1, VIS0, VIS1 = 10, 138, 18, 134               # engine.h
+    probe = ["peek8 {s_fx3d}", "peek8 {s_fx3d+1}"] + [f"peeks32 {{s_refY+{4 * n}}}" for n in (0, 1)] + \
+            [f"peek16 {{s_m+{8 * n + 2 * k}}}" for n in (0, 1) for k in (2, 3)]
+    L = hm.boot() + hm.dismiss() + ["run 300", "poke32 {g_shakeAmt} 5", "poke32 {g_shakeT} 100000", "hold UP"]
+    for _ in range(60):
+        L += ["run 1"] + probe
+    L += ["hold -"] + hm.spawn(1.0, hm.CR_CHASE, settle=0)
+    for _ in range(120):
+        L += ["run 1"] + probe
+    v = t.run(L).values()
+    seen3d = 0
+    for i in range(0, len(v), 8):
+        d3, ref, m = v[i:i + 2], v[i + 2:i + 4], v[i + 4:i + 8]
+        for n in (0, 1):
+            if not d3[n]:
+                continue
+            seen3d += 1
+            pc, pd = ((x ^ 0x8000) - 0x8000 for x in m[2 * n:2 * n + 2])
+            rows = [(ref[n] + pc * sx + pd * sy) >> 8 for sx in (0, 239) for sy in (VIS0, VIS1 - 1)]
+            t.check(ROW0 <= min(rows) and max(rows) < ROW1, f"frame {i // 8}: the screen shows view rows {min(rows)}..{max(rows)} (drawn: {ROW0}..{ROW1 - 1})")
+    t.check(seen3d > 200, "the test did not see the 3D view")

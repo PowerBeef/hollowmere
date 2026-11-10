@@ -12,9 +12,14 @@ typedef uint64_t u64; typedef int64_t s64;
 typedef volatile u8 vu8; typedef volatile u16 vu16; typedef volatile u32 vu32;
 typedef volatile s16 vs16; typedef volatile s32 vs32;
 
+#ifndef HOSTCHECK
 #define IWRAM_CODE __attribute__((section(".iwram"), long_call, target("arm"), noinline))
 // cold code in IWRAM as Thumb (half the size)
 #define IWRAM_THUMB __attribute__((section(".iwram"), long_call, target("thumb"), noinline))
+#else       // engine/tools/hostcheck.py compiles the headers' pure functions for the build machine
+#define IWRAM_CODE
+#define IWRAM_THUMB
+#endif
 #define IWRAM_DATA __attribute__((section(".data.iwram")))
 #define EWRAM_DATA __attribute__((section(".ewram")))
 #define EWRAM_BSS  __attribute__((section(".sbss")))

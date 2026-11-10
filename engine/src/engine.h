@@ -144,6 +144,13 @@ void render_build_flash_tables(void);
 extern const s16 sin_lut[1024];
 INLINE s32 lu_sin(u16 a) { return sin_lut[a >> 6]; }
 INLINE s32 lu_cos(u16 a) { return sin_lut[((a >> 6) + 256) & 1023]; }
+// The renderer's angles: 4096 steps to the turn, rounded. The walls' rays,
+// the camera's axes (floors, sprites) and the props' turn all come from this
+// table, so they agree to a fraction of a column at every heading.
+extern const s16 sin4096[4096];
+#define ANGLE4(a) ((u16)(((a) + 8) & 0xFFF0))
+INLINE s32 lu_sin4(u16 a) { return sin4096[((a + 8) >> 4) & 4095]; }
+INLINE s32 lu_cos4(u16 a) { return sin4096[(((a + 8) >> 4) + 1024) & 4095]; }
 void camera_update(Camera *c);
 
 

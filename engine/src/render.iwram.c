@@ -49,6 +49,7 @@ s32 g_wallHalfLh = 0;
 // sample per pair); defined next to each other in propasm.s (read as a pair)
 
 typedef struct { u32 sdx, sdy, ddx, ddy; const u8 *p; s32 stepXb, stepYb, ex, ey; } DDAE;
+#define SEC_NEVER 0x7FFFFFF     // sec4096[] where the cosine is zero (build_assets.py)
 extern u32 dda_edge(DDAE *d);
 
 // Occluders: rows of the wall that big opaque prop faces in front of it will
@@ -82,7 +83,7 @@ typedef struct {
 
 // cast the ray of one column through the thin-wall map
 IWRAM_CODE static void cast_column(const CastCtx *k, int col, ColHit *h) {
-    u32 ai = ((u16)(k->camA + ray_angle[col])) >> 4;        // 0..4095
+    u32 ai = ((u16)(k->camA + ray_angle[col])) >> 4;        // 0..4095 (both are whole steps)
     s32 rc = sin4096[(ai + 1024) & 4095];                   // cos, Q14
     s32 rs = sin4096[ai];                                   // sin, Q14
     u32 ddx = sec4096[ai];                                  // |1/cos| 16.16
@@ -96,6 +97,10 @@ IWRAM_CODE static void cast_column(const CastCtx *k, int col, ColHit *h) {
     else        { stepX = 1;  dd.sdx = (u32)(((u64)(0x10000 - k->fracX) * ddx) >> 16); }
     if (rs < 0) { stepY = -1; dd.sdy = (u32)(((u64)k->fracY * ddy) >> 16); }
     else        { stepY = 1;  dd.sdy = (u32)(((u64)(0x10000 - k->fracY) * ddy) >> 16); }
+    // a ray exactly along an axis never crosses the edges parallel to it
+    // (the table's top value is "no crossing", not a distance to scale)
+    if (ddx == SEC_NEVER) dd.sdx = 0xFFFFFFFF;
+    if (ddy == SEC_NEVER) dd.sdy = 0xFFFFFFFF;
     dd.p = k->start;
     dd.stepXb = stepX * 2; dd.stepYb = stepY * (MAP_W * 2);
     dd.ex = stepX > 0 ? 0 : 2;
@@ -330,7 +335,7 @@ __attribute__((noinline)) IWRAM_CODE static u32 draw_room(u8 *fb) {
     k.edges = g_edges;
     k.types = g_edgeTypes;
     k.fracX = k.px & 0xFFFF; k.fracY = k.py & 0xFFFF;
-    k.camA = g_cam.angle;
+    k.camA = ANGLE4(g_cam.angle);
     k.start = k.edges + ((((k.py >> 16) << MAP_SHIFT) | (k.px >> 16)) << 1);
     g_flatCtx.px64 = k.px << 6;
     g_flatCtx.py64 = k.py << 6;

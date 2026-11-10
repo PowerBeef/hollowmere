@@ -88,8 +88,8 @@ void draw_objects(u8 *fb) {
         if (!prop_visible(pi, &f, &r)) continue;
         DrawItem *it = &s_items[n++];
         const Model *m = &models[pi->model];
-        u16 rel = (u16)(pi->angle - g_cam.angle);
-        it->depth = f + ((m->cx * lu_cos(rel) - m->cy * lu_sin(rel)) >> 6);
+        u16 rel = (u16)(pi->angle - ANGLE4(g_cam.angle));
+        it->depth = f + ((m->cx * lu_cos4(rel) - m->cy * lu_sin4(rel)) >> 6);
         it->f = f; it->r = r; it->idx = i; it->kind = 0;
     }
     int nprops = n;
@@ -173,8 +173,8 @@ void occluders_prepass(void) {
         s32 f0 = mulq14(dx, g_cam.dirX) + mulq14(dy, g_cam.dirY);
         s32 r0 = mulq14(dy, g_cam.dirX) - mulq14(dx, g_cam.dirY);
         if (m->far) {
-            u16 rl = (u16)(pi->angle - g_cam.angle);
-            m = model_lod(m, prop_centre_depth(m, f0, r0, lu_cos(rl), lu_sin(rl)));
+            u16 rl = (u16)(pi->angle - ANGLE4(g_cam.angle));
+            m = model_lod(m, prop_centre_depth(m, f0, r0, lu_cos4(rl), lu_sin4(rl)));
             if (!m->nocc) continue;
         }
         if (m->nv > OBJ_MAXV || m->nf > OBJ_MAXF) continue;           // (draw_prop will not draw it)
@@ -187,8 +187,8 @@ void occluders_prepass(void) {
         s32 cmx = (mulq14(wx, co) + mulq14(wy, so)) >> 8;
         s32 cmy = (mulq14(wy, co) - mulq14(wx, so)) >> 8;
         s32 cmz = EYE_256 - pi->z;
-        u16 rel = (u16)(pi->angle - g_cam.angle);
-        s32 ca = lu_cos(rel), sa = lu_sin(rel);
+        u16 rel = (u16)(pi->angle - ANGLE4(g_cam.angle));
+        s32 ca = lu_cos4(rel), sa = lu_sin4(rel);
         s32 hb = ((s32)pi->z - EYE_256) << 8;
         for (int k = 0; k < m->nocc; k++) {
             const MFace *fc = &m->f[k];
@@ -219,55 +219,3 @@ void clip_for_depth(int c0, int c1, s32 depth) {
     }
 }
 
-// ------------------------------------------------------- deep polygons
-// The span rasterizer tests a face against the walls with the face's
-// nearest depth. For a face that runs a long way into the distance (a stair
-// flight seen end-on, a long table) that lets it through walls it is behind
-// in the columns where it is far away. For such faces, drop each column in
-// which even the nearest of its pixels is behind the wall.
-typedef struct { s32 x, y, w, u, v; } PVc;
-typedef struct { s16 yA[VIEW_W], yB[VIEW_W]; u32 uvA[VIEW_W], uvB[VIEW_W]; } OutlineC;
-extern OutlineC g_ol;
-
-void poly_depth_cull(const PVc *p, int n, int c0, int c1) {
-    // the plane of 1/z over the screen through the widest triangle
-    int i1 = 1, i2 = 2;
-    s64 best = 0;
-    for (int a = 1; a < n - 1; a++)
-        for (int b = a + 1; b < n; b++) {
-            s64 cr = (s64)(p[a].x - p[0].x) * (p[b].y - p[0].y) - (s64)(p[b].x - p[0].x) * (p[a].y - p[0].y);
-            if (cr < 0) cr = -cr;
-            if (cr > best) { best = cr; i1 = a; i2 = b; }
-        }
-    if (best == 0) return;
-    s64 dx1 = p[i1].x - p[0].x, dy1 = p[i1].y - p[0].y, dw1 = p[i1].w - p[0].w;
-    s64 dx2 = p[i2].x - p[0].x, dy2 = p[i2].y - p[0].y, dw2 = p[i2].w - p[0].w;
-    s64 det = (dx1 * dy2 - dx2 * dy1) >> 16;
-    if (det == 0) return;
-    s64 A = (dw1 * dy2 - dw2 * dy1) / det;           // 1/z per pixel across, 16.16
-    s64 B = (dx1 * dw2 - dx2 * dw1) / det;           // and down
-    if (A > -0x8000 && A < 0x8000 && B > -0x8000 && B < 0x8000) {
-        // the usual case, in 32 bits (Thumb has no long multiply): 1/z in
-        // 26.6, stepped across the columns, the rows in 1/16 px
-        s32 a6 = (s32)A << 6, b2 = (s32)B << 2, y0 = p[0].y >> 12;
-        s32 wc = (s32)(((s64)p[0].w << 6) + ((A * (((s64)c0 << 16) + 0x8000 - p[0].x)) >> 10));
-        for (int c = c0; c <= c1; c++, wc += a6) {
-            s32 ya = g_ol.yA[c], yb = g_ol.yB[c];       // either chain can be the top one
-            if (ya == yb) continue;
-            s32 wa = wc + b2 * (ya - y0), wb = wc + b2 * (yb - y0);
-            s32 wn = (wa > wb ? wa : wb) >> 6;
-            if (wn > 0 && (s32)rcp16((u32)wn) >= g_zbuf[c]) g_ol.yB[c] = ya;      // behind the wall here
-        }
-        return;
-    }
-    for (int c = c0; c <= c1; c++) {
-        s32 ya = g_ol.yA[c], yb = g_ol.yB[c];
-        if (ya == yb) continue;
-        s64 bx = A * (((s64)c << 16) + 0x8000 - p[0].x);
-        s32 wa = p[0].w + (s32)((bx + B * (((s64)ya << 12) - p[0].y)) >> 16);
-        s32 wb = p[0].w + (s32)((bx + B * (((s64)yb << 12) - p[0].y)) >> 16);
-        s32 wn = wa > wb ? wa : wb;
-        if (wn <= 0) continue;
-        if ((s32)rcp16((u32)wn) >= g_zbuf[c]) g_ol.yB[c] = ya;
-    }
-}

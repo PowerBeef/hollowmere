@@ -41,7 +41,8 @@ g_vhalf:    .word 0         @ the lowest detail: far things one sample per two r
     .equ ROW0, 10
     .equ ROW1, 138
 
-@ out = 2^32 / in (both 16.16), in < 2^28; clobbers tmp and the flags
+@ out = 2^32 / in (both 16.16), in < 2^28 (RCPMAX clamps a length that could
+@ be more); clobbers tmp and the flags
 .macro RCP out, in, tmp, tab
     cmp     \in, #0x10000
     movlo   \tmp, \in, lsr #4
@@ -60,6 +61,52 @@ g_vhalf:    .word 0         @ the lowest detail: far things one sample per two r
     movhs   \out, \out, lsr #8
 99:
 .endm
+.macro RCPMAX in
+    cmp     \in, #0x10000000
+    mvnhs   \in, #0xF0000000        @ 2^28 - 1
+.endm
+
+@ ---------------------------------------------------------------------------
+@ s32 edge_rcp(s32 len, s32 across)    2^44 / len, for the slope of an edge
+@ len long (16.16; under a quarter pixel counts as that) that spans `across`
+@ the other way. The table alone gives 8 good bits: enough while the edge
+@ spans under 128 rows. A longer one (a face cut at the near plane starts
+@ thousands of pixels off the screen) would land rows away from where it
+@ should, so its reciprocal gets a Newton step: 16 good bits or better.
+@ Clobbers r1-r3, r12.
+@ ---------------------------------------------------------------------------
+    .global edge_rcp
+    .type edge_rcp, %function
+edge_rcp:
+    cmp     r0, #0x4000
+    movlt   r0, #0x4000
+    cmp     r1, #0
+    rsblt   r1, r1, #0
+    ldr     r12, =rcp_tab
+    cmp     r1, #0x800000
+    cmplo   r0, #0x1000000
+    bhs     1f
+    RCP     r2, r0, r3, r12
+    mov     r0, r2, lsl #12
+    bx      lr
+1:  RCPMAX  r0
+    mov     r1, r0
+    mov     r2, #20
+2:  cmp     r1, #4096               @ len >> s into 2048..4095, the table's best part
+    movhs   r1, r1, lsr #1
+    subhs   r2, r2, #1              @ 20 - s
+    bhs     2b
+    ldr     r1, [r12, r1, lsl #2]
+    mov     r1, r1, lsl r2          @ r = 2^44 / len, 11 good bits
+    umull   r2, r3, r0, r1          @ len * r = 2^44 (1 + e)
+    mov     r2, r2, lsr #28
+    orr     r2, r2, r3, lsl #4      @ 2^16 (1 + e)
+    rsb     r2, r2, #0x20000
+    umull   r0, r3, r1, r2          @ r (1 - e)
+    mov     r0, r0, lsr #16
+    orr     r0, r0, r3, lsl #16
+    bx      lr
+    .pool
 
 @ texel of a 64x64 column-major texture at uv (u 6.10 << 16 | v 6.10)
 .macro TEX out, uv, t, tex
@@ -225,6 +272,7 @@ rspan_draw:
     str     r10, [sp, #RS_CE]
     str     r1, [sp, #RS_C]
     sub     r10, r6, r2             @ width
+    RCPMAX  r10
     RCP     r11, r10, lr, r12       @ 1 / width
     sub     r7, r7, r3
     MULS    r6, r7, r11, lr         @ per column: u/z
@@ -515,6 +563,7 @@ col_mask2:
     cmp     r9, #0x1000
     movlt   r9, #0x1000
     ldr     r12, =rcp_tab
+    RCPMAX  r9
     RCP     r2, r9, r0, r12
     ldr     r12, [r11, #VF_VR]
     smull   r9, r0, r12, r2
@@ -823,6 +872,7 @@ vface_half:
     cmp     r0, #0x1000
     movlt   r0, #0x1000
     ldr     r12, =rcp_tab
+    RCPMAX  r0
     RCP     r2, r0, r3, r12
     ldr     r12, [r11, #VF_VR]
     smull   r0, lr, r12, r2
@@ -1232,12 +1282,23 @@ pspan_half:
 1:  ldr     r0, [r11, #4]
     cmp     r4, r0
     addlt   r4, r4, #1
+.Lph_col:
     mov     r10, #0
     bl      .Lpcol
     ldr     r0, [sp, #4]
     ldr     r1, [sp, #12]
     subs    r9, r1, r0
-    ble     3f
+    bgt     .Lph_draw
+    @ nothing of the pair's even column (a wall in front of it, the jamb of a
+    @ doorway): the odd one may still show, by itself
+    tst     r4, #1
+    bne     3f
+    ldr     r1, [r11, #8]
+    add     r4, r4, #1
+    cmp     r4, r1
+    ble     .Lph_col
+    b       3f
+.Lph_draw:
     ldr     r1, [r11]
     add     r1, r1, r4
     rsb     r2, r0, r0, lsl #4
@@ -1318,6 +1379,11 @@ pspan_half:
     mov     \t, \t, lsr #16
     orr     \out, \t, \out, lsl #16
 .endm
+.macro MUL28 out, a, b, t          @ out = (a * b) >> 28: a times an rcp28 result
+    smull   \t, \out, \a, \b
+    mov     \t, \t, lsr #28
+    orr     \out, \t, \out, lsl #4
+.endm
     .equ CW_P, 0
     .equ CW_LIST, 4
     .equ CW_LEN, 8
@@ -1386,12 +1452,14 @@ chain_walk:
     cmp     r4, r5
     bgt     .Lcw_edge
     str     r5, [sp, #F_S1]
-    @ 1 / dx
-    sub     r2, r1, r0
-    cmp     r2, #0x100
-    movlt   r2, #0x100
-    ldr     r12, =rcp_tab
-    RCP     r8, r2, r3, r12         @ r8 = inv
+    @ r8 = 2^44 / dx
+    sub     r0, r1, r0
+    ldr     r2, [r9, #4]
+    ldr     r1, [r10, #4]
+    sub     r1, r1, r2
+    bl      edge_rcp
+    mov     r8, r0
+    ldr     r0, [r9]                @ a.x
     @ t = first column centre - a.x
     mov     r7, r4, lsl #16
     add     r7, r7, #0x8000
@@ -1400,7 +1468,7 @@ chain_walk:
     ldr     r0, [r9, #4]
     ldr     r1, [r10, #4]
     sub     r1, r1, r0
-    MUL16   r6, r1, r8, r2          @ dy
+    MUL28   r6, r1, r8, r2          @ dy
     MUL16   r1, r7, r6, r2
     add     r5, r0, r1              @ y
     @ buffers at s0
@@ -1420,14 +1488,14 @@ chain_walk:
     ldr     r6, [r9, #12]           @ a.u
     ldr     r12, [r10, #12]
     sub     r12, r12, r6
-    MUL16   lr, r12, r8, r5         @ du
+    MUL28   lr, r12, r8, r5         @ du
     MUL16   r12, r7, lr, r5
     add     r6, r6, r12             @ u
     str     lr, [sp, #F_TMP]
     ldr     r12, [r9, #16]          @ a.v
     ldr     r5, [r10, #16]
     sub     r5, r5, r12
-    MUL16   r9, r5, r8, lr          @ dv
+    MUL28   r9, r5, r8, lr          @ dv
     MUL16   r5, r7, r9, lr
     add     r8, r12, r5             @ v
     ldr     r7, [sp, #F_TMP]        @ du
@@ -1444,7 +1512,7 @@ chain_walk:
     ldr     r0, [r9, #8]            @ 1/z
     ldr     r1, [r10, #8]
     sub     r1, r1, r0
-    MUL16   r2, r1, r8, r3
+    MUL28   r2, r1, r8, r3
     str     r2, [sp, #F_DW]
     MUL16   r1, r7, r2, r3
     add     r0, r0, r1
@@ -1452,7 +1520,7 @@ chain_walk:
     ldr     r0, [r9, #12]           @ u/z
     ldr     r1, [r10, #12]
     sub     r1, r1, r0
-    MUL16   r2, r1, r8, r3
+    MUL28   r2, r1, r8, r3
     str     r2, [sp, #F_DUZ]
     MUL16   r1, r7, r2, r3
     add     r0, r0, r1
@@ -1460,7 +1528,7 @@ chain_walk:
     ldr     r0, [r9, #16]           @ v/z
     ldr     r1, [r10, #16]
     sub     r1, r1, r0
-    MUL16   r2, r1, r8, r3
+    MUL28   r2, r1, r8, r3
     str     r2, [sp, #F_DVZ]
     MUL16   r1, r7, r2, r3
     add     r0, r0, r1

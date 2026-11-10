@@ -182,9 +182,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
     if (c0 < 0) c0 = 0;
     if (c1 > VIEW_W - 1) c1 = VIEW_W - 1;
     if (c0 > c1) return;
-    s32 dx = xb - xa;
-    if (dx < 0x100) dx = 0x100;
-    s32 inv = (s32)rcp16((u32)dx);
+    s32 inv = edge_rcp(xb - xa, (yta > ytb ? yta - ytb : ytb - yta) | (yba > ybb ? yba - ybb : ybb - yba));
     // texel rows per screen row = vr / (yb - yt), and the face's screen
     // height is H * FOCAL / depth (a parallelogram), so step = kstep * depth
     s32 H = s_vz[ita] - s_vz[ia], Hb = s_vz[itb] - s_vz[ib];
@@ -197,7 +195,7 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
     s32 wm = (wa + wb) >> 1;
     u32 fm = rcp16((u32)wm);
     u32 dv = (u32)mul16(kst0, (s32)fm);
-    s32 du = mul16(ub - ua, inv); if (du < 0) du = -du;
+    s32 du = MULR28(ub - ua, inv); if (du < 0) du = -du;
     u32 dens = (u32)du > dv ? (u32)du : dv;
     int m = pmip_of(dens);
     VFace vf;
@@ -209,8 +207,8 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void vert_face(u8 *fb, const M
     vf.kstep = kst0 >> m;
     vf.vr = vr0 >> m;
     s32 uwa = mul16(ua >> m, wa), uwb = mul16(ub >> m, wb);
-    s32 dyt = mul16(ytb - yta, inv), dyb = mul16(ybb - yba, inv);
-    s32 dw = mul16(wb - wa, inv), duw = mul16(uwb - uwa, inv);
+    s32 dyt = MULR28(ytb - yta, inv), dyb = MULR28(ybb - yba, inv);
+    s32 dw = MULR28(wb - wa, inv), duw = MULR28(uwb - uwa, inv);
     // light: one colormap for the whole face if every cone it spans agrees
     face_lights(vf.lt, c0, c1, fm, fl, shade);
     int k0 = g_coneOf[c0], k1 = g_coneOf[c1];
@@ -295,10 +293,9 @@ extern void rspan_draw(RSpan *s);
 
 __attribute__((optimize("Os"))) IWRAM_CODE static void edge_at(s32 *e, s32 *d, const PV *a, const PV *b, s32 yc) {
     s32 dy = b->y - a->y;
-    if (dy < 0x100) dy = 0x100;
-    s32 inv = (s32)rcp16((u32)dy);
-    d[0] = mul16(b->x - a->x, inv); d[1] = mul16(b->u - a->u, inv);
-    d[2] = mul16(b->v - a->v, inv); d[3] = mul16(b->w - a->w, inv);
+    s32 inv = edge_rcp(dy, b->x - a->x);
+    d[0] = MULR28(b->x - a->x, inv); d[1] = MULR28(b->u - a->u, inv);
+    d[2] = MULR28(b->v - a->v, inv); d[3] = MULR28(b->w - a->w, inv);
     s32 t = yc - a->y;
     e[0] = a->x + mul16(t, d[0]); e[1] = a->u + mul16(t, d[1]);
     e[2] = a->v + mul16(t, d[2]); e[3] = a->w + mul16(t, d[3]);
@@ -341,7 +338,38 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void row_face(u8 *fb, const PV
 }
 
 extern PV g_polyPV[8];        // VRAM scratch (see gba.ld): keeps the stack shallow
-extern void poly_depth_cull(const PV *p, int n, int c0, int c1) __attribute__((long_call));
+// The column drawers test a polygon against the walls with its nearest
+// depth. Where a wall stands between its nearest and farthest points (a
+// stair flight through the dining-room wall, a dresser half behind a corner)
+// that lets it show through the wall in the columns where it is the farther
+// of the two. In those columns the polygon's own depth decides: 1/z runs
+// linearly along both outline chains, and the column goes when even the
+// nearer of its two ends is behind the wall.
+typedef struct { const PV *p; const u8 *list; int k, n, end; s32 w, d; } WChain;
+__attribute__((noinline, optimize("Os"))) IWRAM_CODE static void wchain_next(WChain *ch, int c) {
+    while (c > ch->end && ch->k < ch->n - 1) {       // the edge over column c: 1/z at its centre, and per column
+        const PV *a = &ch->p[ch->list[ch->k]], *b = &ch->p[ch->list[ch->k + 1]];
+        ch->d = MULR28(b->w - a->w, edge_rcp(b->x - a->x, 0));
+        ch->w = a->w + mul16((c << 16) + 0x8000 - a->x, ch->d);
+        ch->end = (b->x - 0x8000) >> 16;
+        ch->k++;
+    }
+}
+__attribute__((optimize("O2"))) IWRAM_CODE static void poly_wall_cull(WChain *A, WChain *B, int c0, int c1, u32 fnear, u32 ffar) {
+    s32 wa = 0, da = 0, wb = 0, db = 0;
+    int ea = c0 - 1, eb = c0 - 1;
+    A->end = B->end = ea;
+    const s32 *zb = g_zbuf;
+    for (int c = c0; c <= c1; c++, wa += da, wb += db) {
+        if (c > ea) { wchain_next(A, c); wa = A->w; da = A->d; ea = A->end; }
+        if (c > eb) { wchain_next(B, c); wb = B->w; db = B->d; eb = B->end; }
+        u32 z = (u32)zb[c];
+        if (z <= fnear || z >= ffar) continue;          // (the column drawers get these right)
+        s32 wn = wa > wb ? wa : wb;
+        // 1 / wn >= z (and a little): its nearest point here is behind the wall
+        if (wn > 0 && (u32)(((u64)(u32)wn * (z + (z >> 8))) >> 32) == 0) g_ol.yB[c] = g_ol.yA[c];
+    }
+}
 __attribute__((optimize("Os"))) IWRAM_CODE static void poly_face(u8 *fb, const MFace *fc, int nvx, const u8 *tex, int fl, int shade) {
     PV *p = g_polyPV;
     int n = 0, needClip = 0;
@@ -430,13 +458,16 @@ __attribute__((optimize("Os"))) IWRAM_CODE static void poly_face(u8 *fb, const M
     chain_walk(&ca);
     ca.list = lb; ca.len = nb; ca.ey = g_ol.yB; ca.euv = g_ol.uvB;
     chain_walk(&ca);
-    // a wall between its nearest and farthest points in some column (the
-    // stair flight through the dining-room wall): test it column by column
-    if (persp)
-        for (int c = c0; c <= c1; c++) {
-            s32 z = g_zbuf[c];
-            if (z > (s32)fnear && z < (s32)ffar - 0x1800) { poly_depth_cull(p, n, c0, c1); break; }
+    // a wall between its nearest and farthest points in some column: test
+    // it column by column (a face that only touches a wall is left alone)
+    for (int c = c0; c <= c1; c++) {
+        s32 z = g_zbuf[c];
+        if (z > (s32)fnear && z < (s32)ffar - 0x1800) {
+            WChain A = { p, la, 0, na, 0, 0, 0 }, B = { p, lb, 0, nb, 0, 0, 0 };
+            poly_wall_cull(&A, &B, c0, c1, fnear, ffar);
+            break;
         }
+    }
     DEV_ONLY(g_objStats[2] += c1 - c0 + 1;)
     if (g_multiAny) clip_for_depth(c0, c1, (s32)((fnear + ffar) >> 1));
     u8 lt[NCONE];
@@ -477,8 +508,8 @@ static u16 s_stamp;
 
 IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
     const Model *m = &models[pi->model];
-    u16 rel = (u16)(pi->angle - g_cam.angle);
-    s32 ca = lu_cos(rel), sa = lu_sin(rel);
+    u16 rel = (u16)(pi->angle - ANGLE4(g_cam.angle));
+    s32 ca = lu_cos4(rel), sa = lu_sin4(rel);
     if (m->far) m = model_lod(m, prop_centre_depth(m, f0, r0, ca, sa));
     int nv = m->nv, nf = m->nf;
     if (nv > MAXV || nf > MAXF) return;
@@ -506,7 +537,7 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         if (fc->v[3] != 0xFF) s_vmark[fc->v[3]] = st;
     }
     if (!ncand) return;
-    DEV_ONLY(u32 tx0 = PROF_T();)
+    FACEPROF_ONLY(u32 tx0 = PROF_T();)
     // pass 2: transform only the vertices those faces use
     s32 hb = ((s32)pi->z - EYE_256) << 8;            // base height relative to the eye, 16.16
     const MVert *mv = m->v;
@@ -533,13 +564,12 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         s32 key = 0, fmax = -0x7FFFFFFF;
         for (int k = 0; k < nvx; k++) { s32 f = s_vf[fc->v[k]]; key += f; if (f > fmax) fmax = f; }
         if (fmax < NEAR) continue;
-        key >>= 8;
-        if (key > 32767) key = 32767; else if (key < -32768) key = -32768;
+        key = face_sort_key(key, nvx);
         int j = nvis++;
         while (j > 0 && s_faceKey[j - 1] < key) { s_faceKey[j] = s_faceKey[j - 1]; s_faceOrder[j] = s_faceOrder[j - 1]; j--; }
         s_faceKey[j] = key; s_faceOrder[j] = i;
     }
-    DEV_ONLY(g_objT[3] += PROF_T() - tx0;)
+    FACEPROF_ONLY(g_objT[3] += PROF_T() - tx0;)
     if (!nvis) return;
     DEV_ONLY(g_objStats[0]++;)
     s32 hd = g_halfDist;
@@ -553,13 +583,13 @@ IWRAM_CODE void draw_prop(u8 *fb, const PropInst *pi, s32 f0, s32 r0) {
         int fl = (g_lightgrid[(((gyw >> 15) & 63) << 6) | ((gxw >> 15) & 63)] & LG_LIGHT) + pi->light;
         int shade = FF_SHADE(fc->flags);
         DEV_ONLY(g_objStats[1]++;)
-        DEV_ONLY(u32 tq = PROF_T();)
+        FACEPROF_ONLY(u32 tq = PROF_T();)
 #ifdef FACELOG
         u32 c2 = g_objStats[2];
         u32 px0 = ((volatile u32 *)0x02037000)[12];
 #endif
-        if (fc->flags & FF_VERT) { vert_face(fb, fc, tex, fl, shade); DEV_ONLY(g_objT[0] += PROF_T() - tq; g_objF[0]++;) }
-        else { poly_face(fb, fc, fc->v[3] == 0xFF ? 3 : 4, tex, fl, shade); DEV_ONLY(g_objT[1] += PROF_T() - tq; g_objF[1]++;) }
+        if (fc->flags & FF_VERT) { vert_face(fb, fc, tex, fl, shade); FACEPROF_ONLY(g_objT[0] += PROF_T() - tq; g_objF[0]++;) }
+        else { poly_face(fb, fc, fc->v[3] == 0xFF ? 3 : 4, tex, fl, shade); FACEPROF_ONLY(g_objT[1] += PROF_T() - tq; g_objF[1]++;) }
 #ifdef FACELOG
         if (g_nflog < 64 && !g_frozenLog) {
             u32 *L = g_flog[g_nflog++];
@@ -681,6 +711,7 @@ __attribute__((optimize("Os"))) OCC_CODE void occ_face(const PropInst *pi, const
     if (c0 > c1) return;
     s32 dx = xb - xa;
     if (dx < 0x10000) return;
+    if (dx > 0x0FFFFFFF) dx = 0x0FFFFFFF;
     s32 inv = (s32)rcp16((u32)dx);
     s32 dyt = mul16(ytb - yta, inv), dyb = mul16(ybb - yba, inv), dw = mul16(wb - wa, inv);
     s32 t = (c0 << 16) + 0x8000 - xa;

@@ -75,7 +75,14 @@ static inline u32 rcp16(u32 x) {
     if (x < 0x10000) return rcp_tab[x >> 4] << 4;
     if (x < 0x100000) return rcp_tab[x >> 8];
     if (x < 0x1000000) return rcp_tab[x >> 12] >> 4;
-    return rcp_tab[x >> 16] >> 8;
+    return rcp_tab[x >> 16] >> 8;        // (x < 2^28)
 }
+
+// 2^44 / len for the slope of an edge len long (16.16; under a quarter pixel
+// counts as that) that spans `across` the other way: from the table (8 good
+// bits) while that keeps the far end within half a pixel, else refined to 16
+// good bits (propasm.s). MULR28(a, inv) = a / len.
+s32 edge_rcp(s32 len, s32 across);
+#define MULR28(a, inv) ((s32)(((s64)(a) * (inv)) >> 28))
 
 #endif

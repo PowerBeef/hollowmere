@@ -5,7 +5,8 @@ Runs every check the repository has, one after another, and exits 1 if any
 fails. `make check` builds both ROMs and the harness first and then runs this.
 Output of each step goes to OUTDIR (default build/check)/<step>.log.
 
-Steps that need no emulator: content (level audit, text, the LZ77 packer).
+Steps that need no emulator: content (level audit, text, the LZ77 packer) and
+host (the engine's pure functions, compiled for this machine).
 Steps in the emulator: selftest (the tools themselves), boot (the release
 ROM), playthrough, regress, sweep (undrawn pixels over the levels; --quick
 samples every 12th view), fps, stack, saves."""
@@ -28,6 +29,7 @@ def main():
         ('audit', [py, f"{T}/audit.py"]),
         ('text', [py, f"{T}/textcheck.py"]),
         ('lz77', [py, f"{T}/lz77.py"]),
+        ('host', [py, f"{T}/hostcheck.py", f"{out}/host"]),
         ('selftest', [py, f"{T}/selftest.py", f"{out}/selftest"]),
         ('boot', [py, f"{T}/bootcheck.py", f"{out}/boot"]),
         ('playthrough', [py, f"{G}/playtest.py", f"{out}/playthrough"]),

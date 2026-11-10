@@ -18,16 +18,33 @@ void fx_prepare(void) {
     // affine matrix in view space: rotation + zoom about the screen centre.
     // A screen pixel (sx, sy) shows view pixel (rx0 + pa sx + pb sy, ry0 + pc sx + pd sy).
     s32 z = g_fx.zoom > 16 ? g_fx.zoom : 16;
-    // the 3D view keeps 4 spare rows above and below the visible ones: a roll
-    // must not reach past them at the screen edges (they hold tables)
+    // The 3D view has a few spare rows above and below the visible ones
+    // (ROW0..VIS0, VIS1..ROW1) and the renderer's tables right beyond them:
+    // no roll, zoom, shake or bob may bring those onto the screen.
     u16 roll = g_fx.roll;
-    if (d3) { s16 r = (s16)roll; if (r > 330) r = 330; else if (r < -330) r = -330; roll = (u16)r; }
+    if (d3) {
+        s16 r = (s16)roll;
+        if (r > 330) r = 330; else if (r < -330) r = -330;      // 3.8 rows at the screen's edges
+        roll = (u16)r;
+        if (z < 256) z = 256;
+    }
     s32 c = lu_cos(roll), s = lu_sin(roll);      // Q14
     s32 pa = (c * 256 / z) >> 6, pb = (s * 256 / z) >> 6;   // 8.8
     s32 pc = -pb, pd = pa;
     s32 ox = (120 << 8) + g_fx.offX, oy = (80 << 8) + g_fx.offY + g_fx.bobY;
     s32 rx0 = ox - pa * 120 - pb * 80;
     s32 ry0 = oy - pc * 120 - pd * 80;
+    if (d3) {
+        // the view rows at the four corners of what is shown; the wave moves
+        // a line sideways by up to a few pixels, which a roll turns into a
+        // fraction of a row: half a row of margin covers it
+        s32 lo = ry0 + pd * VIS0, hi = ry0 + pd * (VIS1 - 1);
+        s32 tilt = pc * 239;
+        if (tilt < 0) lo += tilt; else hi += tilt;
+        s32 top = (ROW0 << 8) + 128, bottom = (ROW1 << 8) - 129;
+        if (hi > bottom) { ry0 -= hi - bottom; lo -= hi - bottom; }
+        if (lo < top) ry0 += top - lo;
+    }
     s_m[n][0] = pa; s_m[n][1] = pb; s_m[n][2] = pc; s_m[n][3] = pd;
     s_refX[n] = rx0; s_refY[n] = ry0;
     s32 amp = g_fx.wave;

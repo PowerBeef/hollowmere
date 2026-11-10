@@ -96,8 +96,8 @@ void render_build_flash_tables(void) {
 }
 
 void camera_update(Camera *c) {
-    c->dirX = lu_cos(c->angle) ;
-    c->dirY = lu_sin(c->angle);
+    c->dirX = lu_cos4(c->angle);
+    c->dirY = lu_sin4(c->angle);
     c->planeX = -(c->dirY * PLANE_Q14) >> 14;
     c->planeY = (c->dirX * PLANE_Q14) >> 14;
 }

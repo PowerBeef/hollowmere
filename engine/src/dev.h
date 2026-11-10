@@ -14,4 +14,13 @@
 #define DEV_ONLY(...)
 #endif
 
+// Time and count per face inside the prop drawer (g_objT, g_objF): only with
+// make test-rom DEFS=-DFACEPROF, because the code is fast RAM the stack
+// would otherwise have (engine/tools/stackcheck.py).
+#if defined(DEV) && (defined(FACEPROF) || defined(FACELOG))
+#define FACEPROF_ONLY(...) __VA_ARGS__
+#else
+#define FACEPROF_ONLY(...)
+#endif
+
 #endif

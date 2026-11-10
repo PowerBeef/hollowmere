@@ -41,6 +41,16 @@ typedef struct {
     s16 cx, cy;      // the model's centre (1/256 tile)
 } Model;
 #define MF_HALF 1        // always one sample per column pair (big, soft-textured: rugs)
+
+// A prop's faces are drawn far to near by the mean depth of their vertices.
+// The key is four times that mean in 1/256 tile (a quad's sum of depths; a
+// triangle's sum is scaled to match, or it would always sort as the nearer
+// of the two), held in 16 bits.
+static inline s32 face_sort_key(s32 sum, int nvx) {
+    if (nvx == 3) sum += sum / 3;
+    sum >>= 8;
+    return sum > 32767 ? 32767 : sum < -32768 ? -32768 : sum;
+}
 extern const Model models[];
 extern const u8 *const proptex[];      // 64x64 column-major textures (ROM)
 

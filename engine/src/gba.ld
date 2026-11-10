@@ -73,10 +73,14 @@ SECTIONS
         __iwram_end = .;
     } > iwram
 
+    /* Fast RAM is for code, the renderer's and mixer's own variables and the
+       stack: only the .bss of the *.iwram.c files stays here. Everything
+       else (the game's and the Thumb code's variables) goes to EWRAM below;
+       that code runs from ROM and does not notice. */
     .bss (NOLOAD) : {
         __bss_start = .;
-        *(.bss .bss.*)
-        *(COMMON)
+        *iwram.o(.bss .bss.*)
+        *iwram.o(COMMON)
         . = ALIGN(4);
         __bss_end = .;
     } > iwram
@@ -92,6 +96,8 @@ SECTIONS
     .sbss (NOLOAD) : {
         __sbss_start = .;
         *(.sbss .sbss.*)
+        *(.bss .bss.*)
+        *(COMMON)
         . = ALIGN(4);
         __sbss_end = .;
     } > ewram
