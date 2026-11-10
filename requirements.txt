@@ -1,7 +1,8 @@
-# the asset build
-numpy
-Pillow
-# optional: preview_snd.py
-scipy
-# optional: re-rendering the Night Sister (game/content/sister/make.py)
-numba
+# What the asset build (make assets) needs, at the versions the release ROM
+# was built with. The ROM is byte-for-byte reproducible with exactly these and
+# arm-none-eabi-gcc 13.2.1 (README: "Reproducing the release"); newer versions
+# usually work but may round a texture or a sound differently.
+#   Python 3.13
+numpy==2.5.3
+Pillow==12.3.0
+scipy==1.18.1

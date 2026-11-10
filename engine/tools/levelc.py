@@ -9,7 +9,8 @@ cells. A cell holds a room letter (or ' ' for outside). Edge characters:
     'd'       single door        'D'  double door
     'a'       wide archway       'n'  narrow archway with side panels
     'w'       window             'x'  closed door that is used as an exit/sign
-    'l'       locked door (key from EDGES options)
+    'l'       a door that must have lock= in EDGES (it is otherwise a 'd':
+              the letter marks it on the plan, the option locks it)
 
 ROOMS maps letters to dict(wall=texture, mat=floor material index, name=...).
 EDGES gives per-edge options keyed by (x, y, 'N'|'W'): lock, swing, event,
@@ -18,7 +19,10 @@ sign, tex, flags... PROPS places 3D furniture, THINGS sprites and items.
 import math
 import numpy as np
 
-MAP_W = MAP_H = 32
+import limits
+from limits import check, in_range
+
+MAP_W, MAP_H = limits.MAP_W, limits.MAP_H
 GRID = 64
 
 DIRS = {'E': 0, 'S': 16384, 'W': 32768, 'N': 49152}
@@ -54,15 +58,23 @@ def parse(mod, ids, models=None):
     rows = [r.ljust(width) for r in rows]
     H = (len(rows) - 1) // 2
     W = (width - 1) // 2
-    assert W <= MAP_W - 1 and H <= MAP_H - 1, f"{mod.NAME}: map {W}x{H} too big"
+    name = mod.NAME
+    check(len(rows) >= 3 and width >= 3 and len(rows) % 2 == 1 and width % 2 == 1, name,
+          f"the MAP is {width} characters by {len(rows)} rows: it must be 2W+1 by 2H+1 (edges on even rows and columns, cells on odd ones)")
+    check(W <= MAP_W - 1 and H <= MAP_H - 1, name, f"the map is {W} by {H} cells: the most is {MAP_W - 1} by {MAP_H - 1}")
     L.W, L.H = W, H
     rooms = mod.ROOMS
+    mats = mod.MATERIALS
+    check(1 <= len(mats) <= limits.MAX_MATERIALS, name, f"MATERIALS has {len(mats)} entries: it needs 1 to {limits.MAX_MATERIALS} (floor, ceiling) pairs")
+    for ch, r in rooms.items():
+        check('wall' in r and 'name' in r, name, f"room '{ch}' needs wall= and name=")
+        in_range(r.get('mat', 0), 0, len(mats) - 1, name, f"mat= of room '{ch}'")
     cell = [[' '] * MAP_W for _ in range(MAP_H)]
     for y in range(H):
         for x in range(W):
             ch = rows[2 * y + 1][2 * x + 1]
             if ch != ' ':
-                assert ch in rooms, f"{mod.NAME}: unknown room '{ch}' at {x},{y}"
+                check(ch in rooms, name, f"cell {x},{y} is room '{ch}', which ROOMS does not have")
             cell[y][x] = ch
     L.cell = cell
 
@@ -133,7 +145,7 @@ def parse(mod, ids, models=None):
                 if ch == ' ' and not (lin and hin):
                     ch = '|' if o == 'W' else '-'
                 if ch == ' ' and (lin and hin) and set(op) <= {'deco_low', 'deco_high'}:
-                    raise ValueError(f"{mod.NAME}: decor on an open edge at {x},{y},{o}")
+                    check(False, name, f"DECOR on the open edge {x},{y},{o}: there is no wall to hang it on")
                 if ch in '-|+':
                     tl, th_ = op.get('tex_low', lw), op.get('tex_high', hw)
                     if op.get('deco_low') and lin:
@@ -158,6 +170,7 @@ def parse(mod, ids, models=None):
                     edges[y, x, oi] = etype((a, b, 0, 0, EK_WALL, 0, 0, 0))
                     L.edge_info[(x, y, o)] = 'wall'
                 elif ch in 'aAn':
+                    check(lin and hin, name, f"the archway at {x},{y},{o} leads outside the map: an arch needs a room on both sides")
                     kind = 'arch' if ch in 'aA' else 'narrow'
                     g = DOOR_GEOM[kind]
                     a = tex(f'archf:{lw}:{g["panel"]}:{g["lintel"]}')
@@ -165,6 +178,13 @@ def parse(mod, ids, models=None):
                     edges[y, x, oi] = etype((a, b, 0, 0, EK_ARCH, 0, g['panel'], g['lintel']))
                     L.edge_info[(x, y, o)] = ('arch', g['panel'])
                 elif ch in 'dDl':
+                    check(lin and hin, name, f"the door at {x},{y},{o} leads outside the map: a door needs a room on both sides "
+                                             f"(draw a way out as 'x' with exit=)")
+                    in_range(op.get('lock', 0), 0, limits.MAX_KEYS - 1, name, f"lock= of the door at {x},{y},{o}")
+                    check(ch != 'l' or op.get('lock'), name, f"the door at {x},{y},{o} is drawn 'l' (locked) but EDGES gives it no lock=: "
+                                                              f"the letter alone locks nothing")
+                    for f_ in op.get('flags', []):
+                        check(f_ in DOOR_FLAGS, name, f"the door at {x},{y},{o} has the unknown flag {f_!r} (known: {', '.join(DOOR_FLAGS)})")
                     double = ch == 'D'
                     g = DOOR_GEOM['double' if double else 'single']
                     leaf = op.get('leaf', 'leaf_double' if double else 'leaf_panel')
@@ -179,7 +199,7 @@ def parse(mod, ids, models=None):
                     L.edge_info[(x, y, o)] = ('door', di)
                     edges[y, x, oi] = 255             # placeholder: separates regions
                 else:
-                    raise ValueError(f"{mod.NAME}: unknown edge char {ch!r} at {x},{y},{o}")
+                    check(False, name, f"unknown edge character {ch!r} at {x},{y},{o}")
     # exits/signs drawn as closed doors in walls: 'x'
     for y in range(MAP_H):
         for x in range(MAP_W):
@@ -265,12 +285,13 @@ def parse(mod, ids, models=None):
             edges[y, x, 1] = et
         d['edgetype'] = et
         ptex_ids[d['leaf']]
-    assert len(L.edge_types) <= 255, f"{mod.NAME}: too many edge types"
+    check(len(L.doors) <= limits.MAX_DOORS, name, f"{len(L.doors)} doors: the most is {limits.MAX_DOORS}")
+    check(len(L.edge_types) - 1 <= limits.MAX_EDGE_TYPES, name,
+          f"{len(L.edge_types) - 1} different kinds of edge (texture pairs, doors, arches): the most is {limits.MAX_EDGE_TYPES}")
     L.edges = edges
+    free_standing_walls(L, name)
 
     # ---- floors: material per cell
-    mats = mod.MATERIALS
-    assert len(mats) <= 4
     L.materials = mats
     for f, c in mats:
         flat_ids[f]; flat_ids[c]
@@ -284,8 +305,15 @@ def parse(mod, ids, models=None):
     L.props = []
     for p in getattr(mod, 'PROPS', []):
         p = dict(p)
-        assert p['model'] in model_ids, f"{mod.NAME}: unknown model {p['model']}"
+        at = f"the prop {p.get('model')!r} at ({p.get('x')}, {p.get('y')})"
+        check(p.get('model') in model_ids, name, f"{at}: there is no such model")
+        check(isinstance(p.get('x'), (int, float)) and isinstance(p.get('y'), (int, float)) and 0 <= p['x'] < MAP_W and 0 <= p['y'] < MAP_H,
+              name, f"{at} is off the map")
+        in_range(int(p.get('z', 0)), -32768, 32767, name, f"z= of {at} (1/256 tile)")
+        in_range(p.get('light', 0), -128, 127, name, f"light= of {at}")
+        in_range(p.get('flags', 0), 0, 255, name, f"flags= of {at}")
         L.props.append(p)
+    check(len(L.props) <= limits.MAX_PROPS, name, f"{len(L.props)} props: the most is {limits.MAX_PROPS}")
     L.boxes = []
     for pi, p in enumerate(L.props):
         mdl = models[p['model']] if models else None
@@ -332,31 +360,52 @@ def parse(mod, ids, models=None):
         L.things.append(dict(t))
     L.thing_names = {}
     for i, t in enumerate(L.things):
-        assert t['type'] in thing_types, f"unknown thing {t['type']}"
-        assert inside(int(t['x']), int(t['y'])), f"{mod.NAME}: thing {t['type']} outside at {t['x']},{t['y']}"
+        at = f"the thing {t.get('type')!r} at ({t.get('x')}, {t.get('y')})"
+        check(t.get('type') in thing_types, name, f"{at}: there is no such kind of thing")
+        check(isinstance(t.get('x'), (int, float)) and isinstance(t.get('y'), (int, float)) and inside(int(t['x']), int(t['y'])),
+              name, f"{at} is outside the rooms")
+        in_range(t.get('param', 0), 0, 255, name, f"param= of {at}")
+        in_range(int(t.get('z', 0) * 256), -32768, 32767, name, f"z= of {at}, in 1/256 tile,")
+        check('name' not in t or t['name'] not in L.thing_names, name, f"two things are named {t.get('name')!r}")
         if 'name' in t:
             L.thing_names[t['name']] = i
+    check(len(L.things) <= limits.MAX_THINGS, name, f"{len(L.things)} things: the most is {limits.MAX_THINGS}")
     L.door_names = {d['name']: i for i, d in enumerate(L.doors) if d.get('name')}
     L.prop_names = {p['name']: i for i, p in enumerate(L.props) if p.get('name')}
     for nm, (x, y, o) in getattr(mod, 'DOOR_NAMES', {}).items():
         idx = [i for i, d in enumerate(L.doors) if d['x'] == x and d['y'] == y and d['axis'] == (0 if o == 'W' else 1)]
-        assert idx, f"{mod.NAME}: no door at {x},{y},{o} for {nm}"
+        check(idx, name, f"DOOR_NAMES calls {x},{y},{o} {nm!r}, but there is no door on that edge")
         L.door_names[nm] = idx[0]
     sx, sy, sd = mod.START
     L.start = (sx, sy)
     L.start_angle = DIRS[sd] if isinstance(sd, str) else sd
-    assert inside(int(sx), int(sy)), f"{mod.NAME}: start outside"
+    check(inside(int(sx), int(sy)), name, f"START ({sx}, {sy}) is outside the rooms")
     L.lights = []
     for lt in getattr(mod, 'LIGHTS', []):
         x, y, inten, radius = lt[:4]
         mode = lt[4] if len(lt) > 4 else 'steady'
+        at = f"the light at ({x}, {y})"
+        check(not isinstance(mode, str) or mode in LIGHT_MODES, name, f"{at} has the unknown mode {mode!r} (known: {', '.join(LIGHT_MODES)})")
         mode = LIGHT_MODES[mode] if isinstance(mode, str) else mode
         group = lt[5] if len(lt) > 5 else 0
+        check(0 <= x < MAP_W and 0 <= y < MAP_H, name, f"{at} is off the map")
+        in_range(inten, 0, limits.MAX_LIGHT_LEVEL, name, f"the brightness of {at}")
+        check(0 < radius * 16 <= 255, name, f"the radius of {at} is {radius}: it must be over 0 and under 16 tiles")
+        in_range(mode, 0, len(LIGHT_MODES) - 1, name, f"the mode of {at}")
+        in_range(group, 0, limits.MAX_LIGHT_GROUPS - 1, name, f"the group of {at}")
         L.lights.append((x, y, inten, radius, mode, group))
     L.triggers = [tuple(t) for t in getattr(mod, 'TRIGGERS', [])]
+    check(len(L.triggers) <= limits.MAX_TRIGGERS, name, f"{len(L.triggers)} triggers: the most is {limits.MAX_TRIGGERS}")
+    for t in L.triggers:
+        check(5 <= len(t) <= 7, name, f"the trigger {t!r} must be (x0, y0, x1, y1, event[, once[, flag]])")
+        for v, hi, what in zip(t[:4], (MAP_W - 1, MAP_H - 1, MAP_W - 1, MAP_H - 1), ('x0', 'y0', 'x1', 'y1')):
+            in_range(v, 0, hi, name, f"{what} of the trigger for {t[4]!r} (cells)")
+        check(t[0] <= t[2] and t[1] <= t[3], name, f"the trigger for {t[4]!r} has its corners the wrong way round: {t[:4]}")
+        if len(t) > 5:
+            in_range(int(t[5]), 0, 1, name, f"once of the trigger for {t[4]!r}")
     L.patrol = []
     for (x, y) in getattr(mod, 'PATROL', []):
-        assert inside(x, y), f"{mod.NAME}: patrol node {x},{y} outside"
+        check(isinstance(x, int) and isinstance(y, int) and inside(x, y), name, f"the patrol node ({x}, {y}) is not a cell inside the rooms")
         if L.blocked[y, x]:
             # nudge it to the nearest free cell of the same room
             best = None
@@ -366,9 +415,11 @@ def parse(mod, ids, models=None):
                         d = abs(xx - x) + abs(yy - y)
                         if best is None or d < best[0]:
                             best = (d, xx, yy)
-            assert best, f"{mod.NAME}: patrol node {x},{y} blocked"
+            check(best, name, f"the patrol node ({x}, {y}) is under furniture, and so is every cell near it")
             x, y = best[1], best[2]
         L.patrol.append((x, y))
+    check(len(L.patrol) <= limits.MAX_PATROL, name, f"{len(L.patrol)} patrol nodes: the most is {limits.MAX_PATROL}")
+    check(len(L.inters) <= limits.MAX_INTERS, name, f"{len(L.inters)} things to use (exits, signs, wardrobes, machines): the most is {limits.MAX_INTERS}")
     L.inside = np.array([[inside(x, y) for x in range(MAP_W)] for y in range(MAP_H)])
     L.ambient = getattr(mod, 'AMBIENT_LIGHT', 0)
 
@@ -396,6 +447,31 @@ def parse(mod, ids, models=None):
                     k = 'open'
                 L.map_kind[(x, y, o)] = k
     return L
+
+
+def free_standing_walls(L, name):
+    """A straight run of wall that touches nothing at either end is refused:
+    seen end on it is thinner than the renderer's four-column ray spacing,
+    and the rays either side of it, hitting the same wall behind, would have
+    the columns between them filled in from that wall."""
+    solid = {k for k, v in L.edge_info.items() if v == 'wall' or isinstance(v, tuple)}
+
+    def at_corner(cx, cy):
+        return [e for e in ((cx, cy, 'N'), (cx - 1, cy, 'N'), (cx, cy, 'W'), (cx, cy - 1, 'W')) if e in solid]
+
+    for (x, y, o) in sorted(solid):
+        step = (1, 0) if o == 'N' else (0, 1)
+        if len(at_corner(x, y)) != 1:
+            continue                    # (runs are examined from their low end)
+        cx, cy, n = x, y, 0
+        while (cx, cy, o) in solid:
+            cx, cy, n = cx + step[0], cy + step[1], n + 1
+            here = at_corner(cx, cy)
+            if len(here) == 1:
+                check(False, name, f"the wall (or doorway) from corner {x},{y} to corner {cx},{cy} stands free at both ends: the renderer can lose a wall "
+                                   f"that thin when it is seen end on. Join one end to another wall, or use a piece of furniture")
+            if len(here) != 2 or (cx, cy, o) not in here:
+                break
 
 
 # ------------------------------------------------------------------ lighting

@@ -822,8 +822,6 @@ def build_all():
     for name, fn in MODELS.items():
         m = fn()
         m.name = name
-        assert len(m.verts) <= 128, m.stats()
-        assert len(m.faces) <= 64, m.stats()
         out[name] = m
     return out
 

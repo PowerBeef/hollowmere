@@ -4,6 +4,7 @@
 import os
 import sys
 import hashlib
+import inspect
 import pickle
 import importlib
 import math
@@ -23,20 +24,62 @@ import proptex
 import furniture
 import lighttables
 import levelc
+import limits
+from limits import check, in_range
 
 BINREL = os.path.relpath(BIN, ROOT).replace(os.sep, '/')    # as the assembler, run from the root, finds it
 os.makedirs(BIN, exist_ok=True)
 os.makedirs(CACHE, exist_ok=True)
 
 
+CACHE_DAYS = 60         # an entry no build has used for this long is deleted
+STATS = dict(built=0, reused=0)
+
+
 def cached(key_obj, fn):
+    """fn()'s result, from the cache when one was stored under key_obj. The
+    key must hold everything the result depends on: the inputs and the
+    source text of the code that shapes it (src() below)."""
     key = hashlib.sha1(pickle.dumps(key_obj)).hexdigest()
     path = os.path.join(CACHE, key + '.pkl')
-    if os.path.exists(path):
-        return pickle.load(open(path, 'rb'))
+    try:
+        with open(path, 'rb') as f:
+            v = pickle.load(f)
+        os.utime(path)                      # used: keep it
+        STATS['reused'] += 1
+        return v
+    except FileNotFoundError:
+        pass
+    except Exception:                       # cut short or unreadable: as good as missing
+        print(f"  (cache entry {key[:12]} is unreadable: rebuilding it)", file=sys.stderr)
+    STATS['built'] += 1
     v = fn()
-    pickle.dump(v, open(path, 'wb'))
+    tmp = f"{path}.{os.getpid()}.tmp"       # written whole, then renamed: a build
+    with open(tmp, 'wb') as f:              # killed half way leaves no broken entry
+        pickle.dump(v, f)
+    os.replace(tmp, path)
     return v
+
+
+def prune_cache(days=CACHE_DAYS):
+    """Deletes the entries no build has used for `days` days and the
+    leftovers of interrupted writes; returns how many."""
+    import time
+    old, n = time.time() - days * 86400, 0
+    for name in os.listdir(CACHE):
+        p = os.path.join(CACHE, name)
+        try:
+            if name.endswith('.tmp') and os.path.getmtime(p) < time.time() - 3600 or name.endswith('.pkl') and os.path.getmtime(p) < old:
+                os.remove(p)
+                n += 1
+        except OSError:
+            pass
+    return n
+
+
+def src(*names):
+    """The source text of toolchain or content modules, for a cache key."""
+    return [open(paths.source(n)).read() for n in names]
 
 
 SISTER_NPZ = os.path.join(paths.ASSETS, 'sister.npz')
@@ -72,7 +115,7 @@ def load_sister():
         for i, nm in enumerate(z['names']):
             d[str(nm)] = sister_mips(z['rgb'][i], z['alpha'][i], z['em'][i], int(z['widths'][i]))
         return d
-    return cached(('sister', key), build)
+    return cached(('sister', key, inspect.getsource(sister_mips)), build)
 
 
 def cname(s):
@@ -109,6 +152,58 @@ def write_if_changed(path, text):
 
 
 from manifest import LEVELS     # the game's levels, in play order
+
+
+def check_textures(wall_imgs, flat_imgs, ptex_imgs):
+    """Every texture at the size the engine unpacks it to (a floor texture
+    of another size would unpack past its 4,096 bytes of the material bank)."""
+    for kind, imgs, (h_, w_) in (('wall', wall_imgs, (limits.WALL_TEX_H, limits.WALL_TEX_W)),
+                                 ('floor or ceiling', flat_imgs, (limits.FLAT_TEX_SIZE, limits.FLAT_TEX_SIZE)),
+                                 ('prop', ptex_imgs, (limits.PROP_TEX_SIZE, limits.PROP_TEX_SIZE))):
+        for n, im in imgs.items():
+            check(np.ndim(im) == 3 and tuple(np.shape(im)[:2]) == (h_, w_), f"texture '{n}'",
+                  f"a {kind} texture must be {w_} wide and {h_} tall; this one is {' by '.join(str(v) for v in np.shape(im)[1::-1])}")
+
+
+def check_text(items):
+    """Every string in characters the font has (plain ASCII, the button
+    icons' control codes and the line break)."""
+    import font
+    glyphs = font.glyph_table()
+    check(len(items) <= limits.MAX_STRINGS, 'text', f"{len(items)} strings: the most is {limits.MAX_STRINGS}")
+    for t in items:
+        bad = sorted({c for c in t if c != '\n' and (ord(c) > 126 or c not in glyphs)})
+        check(not bad, 'text', f"the font has no glyph for {', '.join(repr(c) for c in bad)} in the line {t[:40]!r} (plain ASCII only)")
+
+
+def check_model(n, m, ptex_ids, models):
+    """A model the engine can draw: within its vertex and face counts (over
+    them it would draw nothing while still hiding the walls behind it), every
+    number within its field."""
+    at = f"model '{n}'"
+    check(len(m.verts) <= limits.MAX_MODEL_VERTS, at, f"{len(m.verts)} vertices: the most is {limits.MAX_MODEL_VERTS} (split it into two props)")
+    check(len(m.faces) <= limits.MAX_MODEL_FACES, at, f"{len(m.faces)} faces: the most is {limits.MAX_MODEL_FACES} (split it into two props)")
+    for i, v in enumerate(m.verts):
+        check(len(v) == 3 and all(isinstance(c, (int, np.integer)) and abs(int(c)) <= limits.MAX_MODEL_COORD for c in v), at,
+              f"vertex {i} is {tuple(v)}: whole numbers of 1/256 tile, within {limits.MAX_MODEL_COORD}")
+    for i, f in enumerate(m.faces):
+        fa = f"{at}, face {i}"
+        check(len(f['v']) in (3, 4) and all(isinstance(k, (int, np.integer)) and 0 <= k < len(m.verts) for k in f['v']), fa,
+              f"its vertices are {list(f['v'])}: three or four numbers of the model's {len(m.verts)} vertices")
+        check(len(f['uv']) == len(f['v']) and all(0 <= c <= 255 for pair in f['uv'] for c in pair), fa,
+              f"its texture coordinates {list(f['uv'])} must be one (u, v) per vertex, each 0 to 255")
+        check(isinstance(f['tex'], (int, np.integer)) and 0 <= f['tex'] <= 255 or f['tex'] in ptex_ids, fa, f"there is no prop texture {f['tex']!r}")
+        check(all(abs(c) <= 127 for c in f['n']), fa, f"its normal {tuple(f['n'])} does not fit (length 64)")
+        in_range(int(f['flags']), 0, 255, fa, "flags")
+        # (an upright face is drawn a texture column at a time, top to bottom: the column cannot start again half way down)
+        check(not f['flags'] & 1 or all(0 <= v_ <= limits.PROP_TEX_SIZE for _, v_ in f['uv']), fa,
+              f"an upright face with texture rows {sorted({v_ for _, v_ in f['uv']})}: it cannot repeat its texture downwards. Keep them "
+              f"within 0 to {limits.PROP_TEX_SIZE}, or cut the face in two")
+        FP = [m.verts[k] for k in f['v']]
+        longest = max(math.dist(FP[k], FP[(k + 1) % len(FP)]) for k in range(len(FP)))
+        check(longest <= limits.MAX_FACE_LEN, fa, f"an edge {longest / 256:.2f} tiles long: the most is {limits.MAX_FACE_LEN / 256:.1f} (cut the face in two)")
+    far = getattr(m, 'far', None)
+    check(far is None or far in models, at, f"its far model {far!r} does not exist")
 
 
 def main():
@@ -221,12 +316,13 @@ def main():
                   open(paths.source('palette.py')).read()),
                  lambda: P.build_palette(imgs, emissive, ui))
     out.carray('u16', 'pal_game', P.to_bgr555(pal))
-    cm = cached(('cm', pal.tobytes(), open(paths.source('palette.py')).read()),
+    src_pal = src('palette.py')
+    cm = cached(('cm', pal.tobytes(), src_pal),
                 lambda: P.build_colormap(pal))
     out.blob('cmap_default', lz77.compress(cm.tobytes()))
 
     def quant(img):
-        return cached(('q', img.tobytes(), pal.tobytes()), lambda: P.quantize(img, pal))
+        return cached(('q', img.tobytes(), pal.tobytes(), src_pal), lambda: P.quantize(img, pal))
 
     # wall textures: 64x128 and three mip levels (32x64, 16x32, 8x16, box
     # filtered), each column-major, followed by the same levels as column
@@ -235,6 +331,10 @@ def main():
     # texels of two neighbouring screen columns (see col_pair)
     wall_ids = {}
     out.h.append('\n// wall textures')
+
+    check_textures(wall_imgs, flat_imgs, ptex_imgs)
+    check(len(ptex_names) <= limits.MAX_PROP_TEXTURES, 'prop textures', f"{len(ptex_names)} of them: the most is {limits.MAX_PROP_TEXTURES}")
+    check(len(models) <= limits.MAX_MODELS, 'models', f"{len(models)} of them: the most is {limits.MAX_MODELS}")
 
     def wall_blob(img):
         mips = [img]
@@ -258,7 +358,7 @@ def main():
                 r = np.roll(q, -a, axis=1).reshape(h, w // 4, 4)            # (row, group, 4)
                 parts.append(np.transpose(r, (1, 0, 2)).copy().tobytes())  # group, row, 4
         b = b''.join(parts)
-        assert len(b) == 76160
+        check(len(b) == 76160, 'wall texture', f"packed to {len(b)} bytes instead of 76160")
         return b
     for i, n in enumerate(wall_names):
         wall_ids[n] = i
@@ -293,7 +393,7 @@ def main():
             parts.append(np.transpose(p0, (1, 0, 2)).copy().tobytes())
             parts.append(np.transpose(p1, (1, 0, 2)).copy().tobytes())
         b = b''.join(parts)
-        assert len(b) == 16320
+        check(len(b) == 16320, 'prop texture', f"packed to {len(b)} bytes instead of 16320")
         return b
     for i, n in enumerate(ptex_names):
         ptex_ids[n] = i
@@ -310,6 +410,7 @@ def main():
         out.h.append(f"#define MDL_{cname(n).upper()} {i}")
         if not m.verts:
             m.verts = [(0, 0, 0)]       # (a marker with nothing to draw)
+        check_model(n, m, ptex_ids, models)
         vs = ','.join(f"{{{x},{y},{z}}}" for (x, y, z) in m.verts)
         fs = []
         m.solid_faces = getattr(m, 'occlude', True)
@@ -435,8 +536,9 @@ def main():
 
     out.h.append('\n// sprites')
     spr_names = list(sprites)
+    enc_src = [inspect.getsource(encode_sprite), src_pal]
     for nm in spr_names:
-        enc = cached(('enc', sprites[nm][0].tobytes(), sprites[nm][1].tobytes(), sprites[nm][2].tobytes(), pal.tobytes()),
+        enc = cached(('enc', sprites[nm][0].tobytes(), sprites[nm][1].tobytes(), sprites[nm][2].tobytes(), pal.tobytes(), enc_src),
                      lambda: encode_sprite(*sprites[nm]))
         out.blob(f"spr_{cname(nm)}", enc)
     # thing types: index 0 = none, then props in order
@@ -458,7 +560,7 @@ def main():
     cr_names = list(sister)
     for nm in cr_names:
         for lv, img in enumerate(sister[nm]):
-            enc = cached(('enc', img[0].tobytes(), img[1].tobytes(), img[2].tobytes(), pal.tobytes()),
+            enc = cached(('enc', img[0].tobytes(), img[1].tobytes(), img[2].tobytes(), pal.tobytes(), enc_src),
                          lambda: encode_sprite(*img))
             out.blob(f"spr_cr_{nm}_{lv}", enc)
     rows = []
@@ -494,7 +596,7 @@ def main():
     import sounds
     import music
     import synth
-    src_hash = [open(paths.source(f)).read() for f in ('sounds.py', 'synth.py')]
+    src_hash = src('sounds.py', 'synth.py', 'music.py', 'noise.py')     # (a sound can be a rendered tune)
     snd_names = list(sounds.SOUNDS)
     out.h.append('\n// sounds')
     defs = []
@@ -537,7 +639,7 @@ def main():
         ids = dict(wall=wall_ids, flat=flat_ids, ptex=ptex_ids, model=model_ids, thing=thing_types)
         L = levelc.parse(mod, ids, models)
         src_l = open(paths.source('levelc.py')).read()
-        static, patches = cached(('bake2', L.edges.tobytes(), L.cellmat.tobytes(), L.inside.tobytes(), L.lights,
+        static, patches = cached(('bake3', sorted((k, str(v)) for k, v in L.edge_info.items()), L.edges.tobytes(), L.cellmat.tobytes(), L.inside.tobytes(), L.lights,
                                   [(d['x'], d['y'], d['axis'], d['flags']) for d in L.doors], L.ambient, src_l),
                                  lambda: levelc.bake(L))
         pre = f"lv_{cname(ln)}"
@@ -547,18 +649,22 @@ def main():
             vis += bytes([pt['x0'], pt['y0'], pt['w'], pt['h']]) + pt['data'].tobytes()
         if not vis:
             vis = bytes(4)
-        assert len(vis) <= 8192, f"{ln}: light patches {len(vis)} bytes (max 8192)"
-        assert len(patches) <= 20, f"{ln}: {len(patches)} dynamic lights (max 20)"
+        check(len(patches) <= limits.MAX_DLIGHTS, ln, f"{len(patches)} lights that flicker or belong to a group: the most is {limits.MAX_DLIGHTS}")
+        check(len(vis) <= limits.MAX_LIGHT_BYTES, ln, f"the flickering and grouped lights reach {len(vis)} light cells together: the most is "
+                                                      f"{limits.MAX_LIGHT_BYTES} (shorten their radius)")
         out.blob(pre + '_vis', lz77.compress(bytes(vis)))
         # ---- events
         ev_src = dict(getattr(mod, 'EVENTS', {}))
-        order = ['start', 'lantern'] + [k for k in ev_src if k not in ('start', 'lantern')]
-        ev_ids = {nm: i + 1 for i, nm in enumerate(order)}
+        order, ev_ids = scriptc.event_table(ev_src, ('start', 'lantern'), ln)
+
+        def event(nm, what):
+            check(nm in ev_ids, ln, f"{what} starts the event {nm!r}, which EVENTS does not have")
+            return ev_ids[nm]
         ctx = scriptc.Ctx(strings, sound_ids, flags, ev_ids, L.door_names, L.thing_names, L.name)
         ctx.props = L.prop_names
         ev_ptrs, ev_lens = ['0'], [0]
         for nm in order:
-            code = scriptc.compile_event(ev_src.get(nm, []), ctx)
+            code = scriptc.compile_event(ev_src.get(nm, []), ctx, nm)
             lv_c.append(f"static const u8 {pre}_ev_{nm}[] = {{" + ','.join(str(b) for b in code) + "};")
             ev_ptrs.append(f"{pre}_ev_{nm}")
             ev_lens.append(len(code))
@@ -598,7 +704,7 @@ def main():
         # ---- collision boxes and the per-cell index
         bx = [f"{{{int(x0 * 256)},{int(y0 * 256)},{int(math.ceil(x1 * 256))},{int(math.ceil(y1 * 256))}}}"
               for (x0, y0, x1, y1) in L.boxes]
-        assert len(L.boxes) < 255, f"{ln}: too many collision boxes"
+        check(len(L.boxes) <= limits.MAX_BOXES, ln, f"the furniture has {len(L.boxes)} collision boxes: the most is {limits.MAX_BOXES}")
         arr('CollBox', 'boxes', bx)
         cell_list = []
         offs = []
@@ -614,7 +720,7 @@ def main():
         # ---- things
         th = []
         for t in L.things:
-            ev = ev_ids[t['event']] if t.get('event') else 0
+            ev = event(t['event'], f"the thing {t['type']!r} at ({t['x']}, {t['y']})") if t.get('event') else 0
             fl = 1 if t.get('hidden') else 0
             th.append(f"{{{int(t['x']*256)},{int(t['y']*256)},{thing_types[t['type']]},{t.get('param', 0)},{fl},{ev},{int(t.get('z', 0)*256)},0}}")
         arr('ThingDef', 'things', th)
@@ -623,7 +729,7 @@ def main():
             if mode == 0 and group == 0:
                 continue
             lights_c.append(f"{{{int(x*256)},{int(y*256)},{inten},{int(radius*16)},{mode},{group}}}")
-        assert len(lights_c) == len(patches)
+        check(len(lights_c) == len(patches), ln, f"{len(lights_c)} dynamic lights but {len(patches)} baked patches (a stale cache entry?)")
         arr('LightDef', 'lights', lights_c)
         inters = []
         for it in L.inters:
@@ -633,7 +739,9 @@ def main():
             elif ref[0] == 'sign':
                 param = strings.add(ref[1])
             else:
-                param = ev_ids[ref[1]]
+                param = event(ref[1], f"the {it['type']} at ({it['x']:.1f}, {it['y']:.1f})")
+            check(it['type'] in INTER, ln, f"there is no kind of fixture {it['type']!r} (known: {', '.join(INTER)})")
+            check(0 <= param <= 65535, ln, f"the sign at ({it['x']:.1f}, {it['y']:.1f}) is string {param}: over 65,535")
             hx, hy, ha = it.get('hide', (it['x'], it['y'], 0))
             nx, ny = it['normal']
             ln_ = math.hypot(nx, ny) or 1
@@ -650,13 +758,15 @@ def main():
             if cond:
                 nn = 1 if cond.startswith('!') else 0
                 nf = ctx.flag(cond.lstrip('!')) + 1
-            trig.append(f"{{{x0},{y0},{x1},{y1},{ev_ids[evn]},{once},{nf},{nn}}}")
+            trig.append(f"{{{x0},{y0},{x1},{y1},{event(evn, f'the trigger at {x0},{y0}')},{once},{nf},{nn}}}")
         arr('TriggerDef', 'trigs', trig)
         arr('PathNode', 'patrol', (f"{{{x},{y}}}" for (x, y) in L.patrol))
+        check(not getattr(mod, 'AMBIENCE', None) or mod.AMBIENCE in sound_ids, ln, f"AMBIENCE is {getattr(mod, 'AMBIENCE', None)!r}: there is no such sound")
         amb = sound_ids[mod.AMBIENCE] if getattr(mod, 'AMBIENCE', None) else 0
+        in_range(getattr(mod, 'MONSTER_MODE', 0), 0, 255, ln, "MONSTER_MODE")
         # ---- the map screen: rooms over the house's bounding box, edge kinds, names
-        assert len(L.triggers) <= 32, f"{ln}: more than 32 triggers"
         cells = [(x, y) for y in range(L.H) for x in range(L.W) if L.cell[y][x] != ' ']
+        check(cells, ln, "the MAP has no room cells")
         mx0, my0 = min(x for x, y in cells), min(y for x, y in cells)
         mx1, my1 = max(x for x, y in cells) + 1, max(y for x, y in cells) + 1
         mw, mh = mx1 - mx0, my1 - my0
@@ -666,7 +776,7 @@ def main():
                 ch = L.cell[y][x]
                 if ch != ' ' and ch not in room_ix:
                     room_ix[ch] = len(room_ix)
-        assert len(room_ix) <= 32, f"{ln}: more than 32 rooms"
+        check(len(room_ix) <= limits.MAX_ROOMS, ln, f"{len(room_ix)} rooms: the most is {limits.MAX_ROOMS}")
         mroom = [room_ix[L.cell[y][x]] if L.cell[y][x] != ' ' else 255 for y in range(my0, my1) for x in range(mx0, mx1)]
         MK = dict(open=0, wall=1, door=2, arch=3, window=4, exit=5, sealed=6)
         medge = []
@@ -694,14 +804,26 @@ def main():
   &{pre}_map, {ev_ids.get('resume', 0)}
 }};""")
         out.h.append(f"extern const LevelDef level_{cname(ln)};")
+        leaves = sum(2 if d['double'] else 1 for d in L.doors)
+        if leaves > limits.MAX_DYNPROPS - 1:
+            print(f"  note: {ln} has {leaves} door leaves; the engine draws {limits.MAX_DYNPROPS - 1} open ones at a time", file=sys.stderr)
+        if len(L.things) > limits.MAX_SPRITES - 2:
+            print(f"  note: {ln} has {len(L.things)} things; the engine draws {limits.MAX_SPRITES - 2} at a time", file=sys.stderr)
+        # (the same limits once more, checked by the C compiler against the
+        # engine this data is linked into: a stale gen/ cannot slip through)
+        lv_c.append(f"_Static_assert({len(L.doors)} <= MAX_DOORS && {len(L.props)} <= MAX_PROPS && {len(L.things)} <= MAX_THINGS && "
+                    f"{len(lights_c)} <= MAX_DLIGHTS && {len(L.triggers)} <= MAX_TRIGGERS && {len(room_ix)} <= MAX_ROOMS && "
+                    f"{len(ev_ptrs)} - 1 <= MAX_EVENTS && {len(vis)} <= MAX_LIGHT_BYTES, \"{ln}: over the engine's limits (engine/src/limits.h)\");")
         print(f"  {ln}: {L.W}x{L.H} cells, {len(L.edge_types) - 1} edge types, {len(L.doors)} doors, "
               f"{len(L.props)} props, {len(L.boxes)} boxes, {len(patches)} dyn lights")
+    check(1 <= len(level_names) <= limits.MAX_LEVELS, 'manifest', f"LEVELS has {len(level_names)} levels: 1 to {limits.MAX_LEVELS}")
     lv_c.append("const LevelDef *const level_table[] = {" + ','.join(f"&level_{cname(n)}" for n in level_names) + "};")
     out.h.append(f"#define NUM_LEVELS {len(level_names)}\nextern const LevelDef *const level_table[];")
 
     # ----------------------------------------------------------- strings
     def cstr(t):
         return '"' + t.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\x01', '\\001').replace('\x02', '\\002').replace('\x03', '\\003').replace('\x04', '\\004') + '"'
+    check_text(strings.items)
     lv_c.append("const char *const str_table[] = {\n  " + ',\n  '.join(cstr(t) for t in strings.items) + "\n};")
     out.h.append(f"#define NUM_STRINGS {len(strings.items)}\nextern const char *const str_table[];")
     for nm, i in strings.names.items():
@@ -716,6 +838,10 @@ def main():
     img_src = [open(paths.source(f)).read() for f in ('images.py', 'noise.py', 'palette.py')]
     # the jumpscare is a render of the Night Sister: rebuild when it changes
     img_src.append(hashlib.sha1(open(os.path.join(paths.ASSETS, 'sister_jumpscare.npz'), 'rb').read()).hexdigest())
+    # ... and the title is set in the game's own fonts
+    fonts = os.path.join(paths.ASSETS, 'fonts')
+    for f in sorted(os.listdir(fonts)) if os.path.isdir(fonts) else []:
+        img_src.append((f, hashlib.sha1(open(os.path.join(fonts, f), 'rb').read()).hexdigest()))
     for nm, fn in images.IMAGES.items():
         idx, ipal = cached(('img', nm, img_src, pal.tobytes()), lambda: images.render(fn, pal))
         out.blob(f"img_{nm}", lz77.compress(idx.tobytes()))
@@ -728,10 +854,14 @@ def main():
     write_if_changed(os.path.join(GEN, 'assets.c'),
                      '// generated\n#include "assets.h"\n\n' + '\n'.join(out.c) + '\n' + '\n'.join(lv_c) + '\n')
     write_if_changed(os.path.join(GEN, 'data.s'), '@ generated\n' + '\n'.join(out.s))
-    # preview of palette
+    gone = prune_cache()
+    print(f"asset cache: {STATS['built']} pieces built, {STATS['reused']} reused" + (f", {gone} unused for {CACHE_DAYS} days deleted" if gone else ""))
     print(f"textures: {len(wall_names)} wall, {len(flat_names)} flat, {len(ptex_names)} prop; "
           f"{len(models)} models; levels: {len(level_names)}")
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except limits.ContentError as e:
+        sys.exit(f"build_assets: {e}")

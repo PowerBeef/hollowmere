@@ -89,5 +89,6 @@ if __name__ == '__main__':
     import os
     for t in [b'', b'a', b'abcabcabcabcabc' * 50, os.urandom(1000), bytes(5000)]:
         c = compress(t)
-        assert decompress(c) == t, t[:20]
+        if decompress(c) != t:
+            raise SystemExit(f"lz77: {len(t)} bytes starting {t[:20]!r} do not survive packing and unpacking")
     print('lz77 ok')

@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""Compiler for Hollowmere level event scripts -> bytecode (see engine/src/script.c)."""
+"""Compiler for Hollowmere level event scripts -> bytecode (see engine/src/script.c).
+
+Every value is checked against what its byte (or two) and the engine can
+hold; a mistake is a limits.ContentError naming the level and the event."""
+import limits
+from limits import ContentError, check, in_range
 
 OPS = ['end', 'wait', 'sound', 'sound3d', 'msg', 'objective', 'door', 'light', 'creature', 'shake',
        'flash', 'flag', 'ifnot_flag', 'if_flag', 'jmp', 'give', 'checkpoint', 'endlevel', 'fear',
@@ -40,37 +45,35 @@ class Ctx:
         self.events, self.doors, self.things = events, doors, things
         self.level = level_name
 
+        self.where = level_name
+
     def snd(self, n):
-        if n not in self.sounds:
-            raise KeyError(f"{self.level}: unknown sound {n}")
-        return self.sounds[n]
+        check(n in self.sounds, self.where, f"there is no sound {n!r}")
+        return in_range(self.sounds[n], 0, 255, self.where, f"the number of sound {n!r} (a script can only play the first 256)")
 
     def flag(self, n):
         if n not in self.flags:
-            if len(self.flags) >= 64:
-                raise ValueError("too many flags")
+            # (the last flag is the game code's own: FLAG_GAME in game.h)
+            check(len(self.flags) < limits.NUM_SCRIPT_FLAGS, self.where,
+                  f"the flag {n!r} would be number {len(self.flags) + 1}: the scripts of all levels share {limits.NUM_SCRIPT_FLAGS}")
             self.flags[n] = len(self.flags)
         return self.flags[n]
 
     def door(self, n):
-        if n not in self.doors:
-            raise KeyError(f"{self.level}: unknown door {n}")
+        check(n in self.doors, self.where, f"there is no door named {n!r}")
         return self.doors[n]
 
     def thing(self, n):
-        if n not in self.things:
-            raise KeyError(f"{self.level}: unknown thing {n}")
+        check(n in self.things, self.where, f"there is no thing named {n!r}")
         return self.things[n]
 
     def prop(self, n):
         props = getattr(self, 'props', {})
-        if n not in props:
-            raise KeyError(f"{self.level}: unknown prop {n}")
+        check(n in props, self.where, f"there is no prop named {n!r}")
         return props[n]
 
     def ev(self, n):
-        if n not in self.events:
-            raise KeyError(f"{self.level}: unknown event {n}")
+        check(n in self.events, self.where, f"there is no event {n!r}")
         return self.events[n]
 
     def s(self, text):
@@ -81,7 +84,17 @@ def u16(v):
     return [v & 255, (v >> 8) & 255]
 
 
-def compile_event(actions, ctx):
+def event_table(ev_src, first, where):
+    """(the events of a level in id order, {name: id}): the ones named in
+    `first` lead (the engine knows them by number), ids start at 1."""
+    order = list(first) + [k for k in ev_src if k not in first]
+    check(len(order) <= limits.MAX_EVENTS, where, f"{len(order)} events: the most is {limits.MAX_EVENTS}")
+    return order, {nm: i + 1 for i, nm in enumerate(order)}
+
+
+def compile_event(actions, ctx, name='?'):
+    """The bytecode of one event (a list of action tuples)."""
+    where = ctx.where = f"{ctx.level}, event '{name}'"
     code = []
     labels = {}
     fixups = []      # (pos, label)
@@ -91,82 +104,115 @@ def compile_event(actions, ctx):
         code.extend([0, 0])
 
     for a in actions:
+        check(isinstance(a, (tuple, list)) and a and isinstance(a[0], str), where, f"{a!r} is not an action: an action is a tuple like ('wait', 30)")
+        try:
+            _compile_action(a, ctx, code, labels, jump, where)
+        except (IndexError, KeyError, TypeError, AttributeError) as e:
+            raise ContentError(f"{where}: the action {a!r} has a missing or mistaken argument ({type(e).__name__}: {e})") from None
+    code.append(OPC['end'])
+    for pos, lab in fixups:
+        check(lab in labels, where, f"a jump to the label {lab!r}, which the event does not have")
+        code[pos:pos + 2] = u16(labels[lab])
+    for i, b in enumerate(code):
+        check(isinstance(b, int) and 0 <= b <= 255, where, f"byte {i} of the compiled event is {b!r} (a value in one of its actions is out of range)")
+    check(len(code) <= limits.MAX_EVENT_BYTES, where, f"the event compiles to {len(code)} bytes: the most is {limits.MAX_EVENT_BYTES}")
+    return bytes(code)
+
+
+def _compile_action(a, ctx, code, labels, jump, where):
+    def byte(v, what, hi=255):
+        return in_range(v, 0, hi, where, f"{what} in {a!r}")
+
+    def word(v, what, hi=65535):
+        return u16(in_range(v, 0, hi, where, f"{what} in {a!r}"))
+
+    def cell(v, what):
+        return byte(v, what, limits.MAP_W - 1)
+
+    if True:
         op = a[0]
         args = a[1:]
         if op == 'label':
+            check(args[0] not in labels, where, f"the label {args[0]!r} is there twice")
             labels[args[0]] = len(code)
-            continue
-        if op not in OPC:
-            raise KeyError(f"{ctx.level}: unknown op {op}")
+            return
+        check(op in OPC, where, f"there is no action {op!r} (in {a!r})")
         code.append(OPC[op])
         if op == 'wait':
-            code += u16(int(args[0]))
+            code += word(args[0], 'the frames to wait', limits.MAX_WAIT)
         elif op == 'sound':
-            code += [ctx.snd(args[0]), args[1] if len(args) > 1 else 200, (args[2] if len(args) > 2 else 0) & 255]
+            code += [ctx.snd(args[0]), byte(args[1] if len(args) > 1 else 200, 'the volume'), in_range(args[2] if len(args) > 2 else 0, -128, 127, where, f'the pan in {a!r}') & 255]
         elif op == 'sound3d':
-            code += [ctx.snd(args[0]), args[1], args[2], args[3] if len(args) > 3 else 220]
+            code += [ctx.snd(args[0]), cell(args[1], 'x'), cell(args[2], 'y'), byte(args[3] if len(args) > 3 else 220, 'the volume')]
         elif op == 'msg':
-            code += u16(ctx.s(args[0])) + u16(args[1] if len(args) > 1 else 200)
+            code += word(ctx.s(args[0]), 'the string') + word(args[1] if len(args) > 1 else 200, 'the frames it stays')
         elif op == 'objective':
             sid = ctx.s(args[0])
-            assert sid < 256, f"{ctx.level}: objective string id {sid} does not fit the save's u8"
+            check(sid <= limits.MAX_OBJECTIVE_STRING, where, f"the objective {args[0]!r} is string number {sid}: objectives must be among the first "
+                                                             f"{limits.MAX_OBJECTIVE_STRING + 1} strings (the save keeps the number in a byte)")
             code += u16(sid)
         elif op == 'door':
+            check(args[1] in DOOR_OPS, where, f"a door cannot be told to {args[1]!r} (known: {', '.join(DOOR_OPS)})")
             code += [ctx.door(args[0]), DOOR_OPS[args[1]]]
         elif op == 'light':
-            code += [args[0], min(255, args[1])]
+            code += [byte(args[0], 'the light group', limits.MAX_LIGHT_GROUPS - 1), min(255, in_range(args[1], 0, 256, where, f'the level in {a!r}'))]
         elif op == 'creature':
+            check(args[0] in CREATURE_OPS, where, f"the creature cannot be told to {args[0]!r} (known: {', '.join(CREATURE_OPS)})")
             c = CREATURE_OPS[args[0]]
-            code += [c, args[1] if len(args) > 1 else 0, args[2] if len(args) > 2 else 0]
+            code += [c, byte(args[1] if len(args) > 1 else 0, 'the first value'), byte(args[2] if len(args) > 2 else 0, 'the second value')]
         elif op == 'shake':
-            code += [args[0], args[1]]
+            code += [byte(args[0], 'the strength'), byte(args[1], 'the frames')]
         elif op == 'flash':
-            code += [args[0]]
+            code += [byte(args[0], 'the frames')]
         elif op == 'flag':
-            code += [ctx.flag(args[0]), args[1] if len(args) > 1 else 1]
+            code += [ctx.flag(args[0]), byte(args[1] if len(args) > 1 else 1, 'the value', 1)]
         elif op in ('ifnot_flag', 'if_flag'):
             code += [ctx.flag(args[0])]
             jump(args[1])
         elif op == 'jmp':
             jump(args[0])
         elif op == 'give':
-            code += [GIVE_KINDS[args[0]], args[1] if len(args) > 1 else 1]
+            check(args[0] in GIVE_KINDS, where, f"there is nothing called {args[0]!r} to give (known: {', '.join(GIVE_KINDS)})")
+            n = args[1] if len(args) > 1 else 1
+            code += [GIVE_KINDS[args[0]], byte(n, 'the key', limits.MAX_KEYS - 1) if args[0] in ('key', 'takekey') else byte(n, 'the amount')]
         elif op == 'endlevel':
-            code += [args[0]]
+            code += [byte(args[0], 'the next level', limits.MAX_LEVELS)]
         elif op == 'fear':
-            code += [args[0]]
+            code += [byte(args[0], 'the fear')]
         elif op == 'blackout':
-            code += u16(args[0])
+            code += word(args[0], 'the frames')
         elif op == 'music':
-            code += [MUSIC[args[0]], args[1] if len(args) > 1 else 200]
+            check(args[0] in MUSIC, where, f"there is no music {args[0]!r} (known: {', '.join(MUSIC)})")
+            code += [MUSIC[args[0]], byte(args[1] if len(args) > 1 else 200, 'the volume')]
         elif op == 'ambience':
-            code += [ctx.snd(args[0]) if args[0] else 0, args[1] if len(args) > 1 else 110]
+            code += [ctx.snd(args[0]) if args[0] else 0, byte(args[1] if len(args) > 1 else 110, 'the volume')]
         elif op == 'thing':
             code += [ctx.thing(args[0]), 1 if args[1] else 0]
         elif op == 'inter':
-            code += [args[0], args[1]]
+            code += [byte(args[0], 'the first value'), byte(args[1], 'the second value')]
         elif op in ('ifnot_key', 'if_key'):
-            code += [args[0]]
+            code += [byte(args[0], 'the key', limits.MAX_KEYS - 1)]
             jump(args[1])
         elif op == 'fade':
-            code += [args[0], args[1]]
+            code += [byte(args[0], 'the level', 16), byte(args[1], 'the speed')]
         elif op == 'teleport':
-            code += [args[0], args[1], DIRS[args[2]] if isinstance(args[2], str) else args[2]]
+            check(not isinstance(args[2], str) or args[2] in DIRS, where, f"{args[2]!r} is not a direction (E, S, W, N) in {a!r}")
+            code += [cell(args[0], 'x'), cell(args[1], 'y'), DIRS[args[2]] if isinstance(args[2], str) else byte(args[2], 'the direction', 3)]
         elif op == 'if_fuses_lt':
-            code += [args[0]]
+            code += [byte(args[0], 'the number of fuses')]
             jump(args[1])
         elif op == 'prop':
             code += [ctx.prop(args[0]), 1 if args[1] else 0]
         elif op == 'freeze':
             code += [1 if args[0] else 0]
         elif op == 'lookat':
-            code += [args[0], args[1]] if args[0] is not None else [255, 255]
+            code += [cell(args[0], 'x'), cell(args[1], 'y')] if args[0] is not None else [255, 255]
         elif op == 'note':
-            code += [args[0]]
+            code += [byte(args[0], 'the note', limits.MAX_NOTES - 1)]
         elif op == 'start':
             code += [ctx.ev(args[0])]
         elif op == 'jrand':
-            code += [args[0]]
+            code += [byte(args[0], 'the chance (out of 256)')]
             jump(args[1])
         elif op == 'chapter':
             code += u16(ctx.s(args[0]))
@@ -175,10 +221,4 @@ def compile_event(actions, ctx):
         elif op in ('end', 'checkpoint', 'musicstop', 'ending', 'placefuses', 'stopsounds'):
             pass
         else:
-            raise KeyError(op)
-    code.append(OPC['end'])
-    for pos, lab in fixups:
-        if lab not in labels:
-            raise KeyError(f"{ctx.level}: unknown label {lab}")
-        code[pos:pos + 2] = u16(labels[lab])
-    return bytes(code)
+            check(False, where, f"the compiler has no case for {op!r}")

@@ -5,8 +5,10 @@ Runs every check the repository has, one after another, and exits 1 if any
 fails. `make check` builds both ROMs and the harness first and then runs this.
 Output of each step goes to OUTDIR (default build/check)/<step>.log.
 
-Steps that need no emulator: content (level audit, text, the LZ77 packer) and
-host (the engine's pure functions, compiled for this machine).
+Steps that need no emulator: limits (the asset tools refuse content over the
+engine's limits: contentcheck.py, run with assertions off), cache (the asset
+cache survives a broken entry), the level audit, text, the LZ77 packer, and host (the engine's pure functions, compiled for
+this machine).
 Steps in the emulator: selftest (the tools themselves), boot (the release
 ROM), playthrough, regress, sweep (undrawn pixels over the levels; --quick
 samples every 12th view), fps, stack, saves."""
@@ -26,6 +28,8 @@ def main():
     T, G = paths.TOOLS, paths.TESTS
     py = sys.executable
     steps = [
+        ('limits', [py, '-O', f"{T}/contentcheck.py"]),
+        ('cache', [py, f"{T}/cachecheck.py"]),
         ('audit', [py, f"{T}/audit.py"]),
         ('text', [py, f"{T}/textcheck.py"]),
         ('lz77', [py, f"{T}/lz77.py"]),
@@ -43,8 +47,9 @@ def main():
     for name, cmd in steps:
         if only and name not in only:
             continue
-        if not os.path.exists(cmd[1]):
-            print(f"  skip  {name}: this game has no {os.path.relpath(cmd[1], paths.ROOT)}")
+        script = next(c for c in cmd[1:] if not c.startswith('-'))
+        if not os.path.exists(script):
+            print(f"  skip  {name}: this game has no {os.path.relpath(script, paths.ROOT)}")
             continue
         t0 = time.time()
         log = os.path.join(out, name + '.log')

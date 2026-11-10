@@ -105,7 +105,8 @@ def glyph_table():
     """Returns dict char -> (width, rows as list of bitmasks LSB = leftmost)."""
     out = {}
     for ch, rows in GLYPHS.items():
-        assert len(rows) == HEIGHT, (ch, len(rows))
+        if len(rows) != HEIGHT:
+            raise ValueError(f"font.py: the glyph {ch!r} has {len(rows)} rows instead of {HEIGHT}")
         w = max(len(r) for r in rows)
         bits = []
         for r in rows:

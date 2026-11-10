@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: MIT
+# Builds the game and the example game from a clean checkout, proves the build
+# is reproducible, and runs every check the repository has (make check).
+# Each step is a command from the README or docs/TOOLS.md: nothing here that
+# cannot be run by hand.
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04           # gcc-arm-none-eabi 13.2.1 and libmgba 0.10.2: the versions of docs/TOOLS.md
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libmgba-dev
+          python3 -m pip install -r requirements.txt
+
+      - name: Checks that need no emulator and no build
+        run: python3 engine/tools/check.py build/check-static --only limits,cache,audit,text,lz77
+
+      - name: Build the release ROM from nothing
+        run: |
+          make assets
+          make
+          sha256sum hollowmere.gba | tee build/first.sha256
+
+      - name: Build it again from nothing and compare
+        run: |
+          rm -rf build/cache build/release gen
+          mv hollowmere.gba build/first.gba
+          make assets
+          make
+          sha256sum -c build/first.sha256
+
+      - name: Compare a tagged release with its recorded hash
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: sha256sum -c game/release.sha256
+
+      # (make check runs the same with the hole sweep over all 20,000 views: an hour; that is run before a release)
+      - name: Build the test ROM and the harness, run every check
+        run: |
+          make test-rom harness
+          python3 engine/tools/check.py --quick
+
+      - name: Build and boot the example game
+        run: |
+          make GAME=examples/minimal assets
+          make GAME=examples/minimal all test-rom
+          GAME=examples/minimal python3 engine/tools/check.py build/check-minimal
+
+      - name: Keep the ROMs and the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hollowmere
+          path: |
+            hollowmere.gba
+            build/minimal/*.gba
+            build/check*/*.log
+          if-no-files-found: warn
