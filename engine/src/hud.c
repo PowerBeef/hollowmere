@@ -195,6 +195,8 @@ void hud_icon(int slot, int kind, int count, int frames) {
     s_iconTimer[slot] = frames;
 }
 
+static volatile u8 s_building;      // the sprite list is half rebuilt: not to be copied to the screen
+
 void hud_update(void) {
     draw_pending();
     // the sprite list is rebuilt only when what it shows has changed (this
@@ -208,6 +210,7 @@ void hud_update(void) {
     if (s_battTimer > 0) now = now << 9 | 0x100 | s_x0[HL_TOP];
     if (now == s_shown) { if (s_battTimer > 0 && s_visible) s_battTimer--; return; }
     s_shown = now;
+    s_building = 1;         // (a vblank during the rebuild keeps showing the list as it was)
     int o = 0;
     for (int l = 0; l < HL_COUNT; l++) {
         if (!s_on[l] || !s_visible) continue;
@@ -230,8 +233,9 @@ void hud_update(void) {
         a->attr2 = TILE_BATT | ATTR2_PAL(0);
     }
     while (o < 128) g_oam[o++].attr0 = ATTR0_HIDE;
+    s_building = 0;
 }
 
 void hud_oam_commit(void) {
-    bios_cpufastset(g_oam, (void *)0x07000000, 256);
+    if (!s_building) bios_cpufastset(g_oam, (void *)0x07000000, 256);
 }

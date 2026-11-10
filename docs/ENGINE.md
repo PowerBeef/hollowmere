@@ -21,7 +21,7 @@ A frame has a budget of **842,688 cycles** (3 vblanks). `engine_frame()` measure
 
 Work that would cost a frame several is spread out: the flashlight's light tables are kept per power step and only copied when the light is switched, a line of HUD text is drawn one line per logic tick, and games are expected to do the same with their own heavy steps (Hollowmere builds its enemy's path field 32 cells a tick, `engine/src/flow.h`).
 
-Not every view holds 20 fps. Over the 3,396 places and headings the frame-rate sweep samples in Hollowmere (`sweep.py --fps`), 18 stay at 15 fps at the lowest detail level: close views of the hall staircase and of the chapel's pews, where the furniture fills the screen several times over. And every figure in this repository was timed in the mGBA emulator: **nothing has been run on a console**, which may read video memory more slowly than mGBA models it.
+Not every view holds 20 fps. Over the 3,396 places and headings the frame-rate sweep samples in Hollowmere (`sweep.py --fps --every 6`), 62 are below 19.5 fps and 17 of those stay at 15 fps at the lowest detail level: close views of the hall staircase and of the chapel's pews, where the furniture covers the screen several times over. Three quarters of the views run at full detail. And every figure in this repository was timed in the mGBA emulator: **nothing has been run on a console**, which may read video memory more slowly than mGBA models it.
 
 ## Display
 

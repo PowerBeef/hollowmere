@@ -8,7 +8,7 @@
 
 Full-resolution textured 3D at 20 fps on a 16.78 MHz ARM7, in C and hand-written ARM assembly.
 
-[**Download the game (v1.0)**](https://github.com/PowerBeef/hollowmere/releases/latest) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
+[**Download the game**](https://github.com/PowerBeef/hollowmere/releases/latest) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
 
 <img src="docs/media/walk.gif" width="720" alt="Walking through the hall of Hollowmere">
 
@@ -53,7 +53,7 @@ Explore the manor floor by floor, piece together what happened from the notes le
 
 ### Play it
 
-Download `Hollowmere-v1.0.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
+Download the zip from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
 
 | Button | Action |
 |---|---|
@@ -91,10 +91,11 @@ The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-
 
 **Systems**
 - Stereo software mixer on both Direct Sound channels at 13 kHz with an ARM inner loop, positional 3D sound and a note sequencer
-- Level event scripting: a bytecode VM with 8 concurrent threads (doors, lights, sounds, messages, the enemy, cutscenes), compiled from Python
+- Level event scripting: a bytecode VM with 8 concurrent threads (doors, lights, sounds, messages, the enemy, cutscenes), compiled from Python; a checkpoint keeps the scripts in flight
 - Grid world with collision, line of sight, doors and locks, triggers and pickups
-- Auto-mapping map screen, sprite-based HUD, battery-backed saves
+- Sprite-based HUD, map data for an auto-mapping map screen, battery-backed saves in two alternating slots that survive a power cut mid-write
 - A detail governor that watches each frame's cycle count and trades far detail for speed before a frame can be missed
+- One small interface between engine and game ([`game_api.h`](engine/src/game_api.h)): nine hooks, and a 180-line [example game](examples/minimal) that implements them
 
 **Tricks worth stealing**
 - Renderer tables live in the parts of video memory the letterbox hides: the off-screen rows of both frame buffers hold the depth buffer, colormaps and projection scratch, read as fast as internal RAM
@@ -103,7 +104,9 @@ The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-
 
 **Content pipeline** — the whole game is generated from Python: floor plans written in code, low-poly models built from boxes, prisms and lofts, procedural textures, synthesized sounds and music, and level scripts compiled to bytecode. See [Making a game](docs/MAKING_A_GAME.md).
 
-**Testing** — a headless [mGBA](https://mgba.io)-based harness scripts input, reads and writes memory by symbol and takes screenshots, so the repository can play the whole game through, benchmark frame rates, check stack depth and audit level layouts automatically. See [Toolchain & testing](docs/TOOLS.md).
+**Testing** — a headless [mGBA](https://mgba.io)-based harness scripts input, reads and writes memory by symbol, takes screenshots and fails on any bad memory access. On it, `make check` plays the whole game through, runs a regression test for every bug fixed, looks for undrawn pixels from every place the player can stand, boots the game from hostile save files, measures frame rates and stack depth, and proves that the asset tools refuse content the engine cannot handle. See [Toolchain & testing](docs/TOOLS.md).
+
+**Limits, stated** — the engine's limits live in one file that the C code, the tools and the linker script all read, and the frame rate is measured, not promised: most views hold 20 fps, the heaviest fall to 15 (see [the frame](docs/ENGINE.md#the-frame)). All timing is from the mGBA emulator; nothing here has been run on a console.
 
 ---
 
@@ -111,31 +114,35 @@ The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-
 
 ```
 engine/
-  src/        the runtime: renderer, 3D objects, lighting, audio, effects, world, scripting VM, HUD, map
-  tools/      the toolchain: asset compiler, level/mesh/script compilers, test and benchmark tools
+  src/        the runtime: renderer, 3D objects, lighting, audio, effects, world, scripting VM, HUD, saves,
+              the frame loop; game_api.h is its whole interface to a game, limits.h its limits
+  tools/      the toolchain: asset compiler, level/mesh/script compilers, checks, benchmarks
   harness/    headless mGBA test runner
-game/
-  src/        Hollowmere's own code: main loop, game rules, the player, the Night Sister, menus
-  content/    the game's content as code: levels, models, textures, sprites, sounds, music, story
-  assets/     pre-rendered frames of the Night Sister (slow to regenerate)
-  tests/      harness boot script
+game/         Hollowmere
+  src/        its code: play loop, game rules, the player, the Night Sister, the map screen, menus
+  content/    its content as code: levels, models, textures, sprites, sounds, music, story
+  assets/     pre-rendered frames of the Night Sister (slow to regenerate), the title font
+  tests/      the playthrough, regression tests, hostile saves, benchmark views
+examples/
+  minimal/    the smallest game the engine builds: one C file, a room, a door, a key
 docs/         architecture, content and tooling guides
 ```
 
 ## Building
 
-You need an ARM GCC toolchain and Python 3 with NumPy and Pillow:
+You need an ARM GCC toolchain and Python 3 with NumPy, Pillow and SciPy:
 
 ```sh
-sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi python3-numpy python3-pil   # Debian/Ubuntu
+sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi     # Debian/Ubuntu
+pip install -r requirements.txt
 make assets   # generate gen/ from game/content (about two minutes the first time, cached after)
 make          # build hollowmere.gba
 ```
 
-The build is reproducible: with the toolchain versions listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.0 produces a ROM with SHA-256
-`459e4a058b534e8acd0252b1244248d144a7f1387a6969471903caf80bdc98ae`.
+The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.1 produces a ROM with SHA-256
+`792b0c6cab5545d648aa85ae23b0cacc8f746e633c19ac1f64942c47e005bcde`.
 
-Optional: `make harness` (needs `libmgba-dev`) for the test tools; SciPy for sound previews; Numba to re-render the Night Sister (`python3 game/content/sister/make.py`). Details in [docs/TOOLS.md](docs/TOOLS.md).
+To run the tests as well, install `libmgba-dev` and run `make check` (ten minutes with `python3 engine/tools/check.py --quick` after `make test-rom harness`; an hour in full). To build the example game: `make GAME=examples/minimal assets all`. Re-rendering the Night Sister (`python3 game/content/sister/make.py`) needs Numba (`requirements-optional.txt`). Details in [docs/TOOLS.md](docs/TOOLS.md).
 
 ## License
 

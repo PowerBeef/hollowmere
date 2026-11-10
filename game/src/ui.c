@@ -139,7 +139,7 @@ int ui_title(void) {
             if (i == sel) { text_draw(120 - w / 2 - 12, y, "-", C_RED, 0); text_draw(120 + w / 2 + 6, y, "-", C_RED, 0); }
             y += 13;
         }
-        text_draw(240 - text_width("v1.0") - 4, 150, "v1.0", C_DGREY, 0);
+        text_draw(240 - text_width(GAME_VERSION) - 4, 150, GAME_VERSION, C_DGREY, 0);
         present2d();
         if (g_fx.fade > 0 && (t & 3) == 0) { g_fx.fade--; fx_prepare(); }
         // lightning
