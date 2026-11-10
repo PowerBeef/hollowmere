@@ -2,43 +2,71 @@
 
 <img src="docs/media/title.png" width="720" alt="Hollowmere title screen">
 
-# Hollowmere Engine
+# Hollowmere
 
-**A first-person 3D engine for the Game Boy Advance, and _Hollowmere_, the survival-horror game built on it.**
+**A first-person survival-horror game for the Game Boy Advance,<br>and the 3D engine it runs on, free to build your own games with.**
 
-Full-resolution textured 3D at 20 fps on a 16.78 MHz ARM7, in C and hand-written ARM assembly.
+Textured 3D at full resolution on a 16.78 MHz handheld from 2001. Written in C and ARM assembly, its whole world generated from code, MIT licensed.
 
-[**Download Hollowmere v1.2**](https://github.com/PowerBeef/hollowmere/releases/latest) · [What's new](CHANGELOG.md) · [Engine architecture](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Toolchain & testing](docs/TOOLS.md)
+[**Play the game**](https://github.com/PowerBeef/hollowmere/releases/latest) · [**Build your own**](#build-your-own-game) · [How the engine works](docs/ENGINE.md) · [Making a game](docs/MAKING_A_GAME.md) · [Tools & tests](docs/TOOLS.md) · [Changelog](CHANGELOG.md)
 
 <img src="docs/media/walk.gif" width="720" alt="Walking through the hall of Hollowmere">
 
 </div>
 
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**If you want to play**
+
+A haunted sanatorium, a flashlight, and something that walks the corridors with a lantern. Four chapters, one ROM, any GBA emulator.
+
+[Meet the game ↓](#the-game)
+
+</td>
+<td width="50%" valign="top">
+
+**If you want to build**
+
+A complete first-person engine with its content tools and test suite. The example game in the repository is one 180-line C file.
+
+[Meet the engine ↓](#the-engine)
+
+</td>
+</tr>
+</table>
+
 ---
 
-## Contents
-
-- [Hollowmere, the game](#hollowmere-the-game): what it is, how to play it
-- [What's new in v1.2](#whats-new-in-v12)
-- [What's new in v1.1](#whats-new-in-v11)
-- [The engine](#the-engine): what it does and how
-- [Make your own game](#make-your-own-game): the interface and a 180-line example
-- [Tested, and plain about its limits](#tested-and-plain-about-its-limits)
-- [Building](#building) · [Repository layout](#repository-layout) · [License](#license) · [Credits](#credits)
-
----
-
-## Hollowmere, the game
+## The game
 
 *Autumn, 1958.* Your brother Thomas was sent to Hollowmere, a private sanatorium on an island in a cold, black lake, for "the water cure". His letters grew shorter, then stopped. One night you row across the lake alone. The house is dark — all but one window, high up under the roof.
 
-Explore the manor floor by floor, piece together what happened from the notes left behind, and keep your light low: **the Night Sister** is drawn to light and noise. Hide in wardrobes, hold still in the dark, and never let her count you.
+Explore the manor floor by floor and piece together what happened from the notes left behind. You have no weapon. You have a flashlight, and you are not alone.
 
-- Four chapters: the house, the cellars, the wards upstairs and the attic chapel
-- An enemy with sight, hearing and memory who patrols, investigates, searches and hunts, finding her way through the house (and its doors) by flow-field pathfinding
-- Flashlight with a battery to manage, running that she can hear, hiding places
-- Resident Evil-style map screen, journal of collected notes, checkpoints saved to the cartridge
-- Every texture, model, sprite, sound and note of music generated procedurally from code
+### The Night Sister
+
+<img src="docs/media/door.gif" width="480" align="right" alt="The Night Sister opens the drawing room door and comes in">
+
+She walks the house at night with a lantern, and she is drawn to light and noise.
+
+- **She sees.** Your flashlight shows you the way and shows her where you are.
+- **She hears.** Running is fast and loud, and she hears it from five tiles away.
+- **She remembers.** Lose her and she goes to where she last saw you, and searches the room.
+- **She opens doors.** A closed door buys you a moment. No more.
+
+Hide in a wardrobe and watch her through the slats. Hold still in the dark. Keep your light low, and never let her count you.
+
+<br clear="all">
+
+### What is in it
+
+- **Four chapters**: the house, the cellars, the wards upstairs and the attic chapel
+- **A light to ration**: the flashlight's battery runs down, and spare batteries have to be found
+- **A map that fills in** as you explore, and a journal of every note you find
+- **Checkpoints** saved to the cartridge, in a way that survives switching off mid-save
+- **A world made from code**: every texture, model, sound and note of music is generated, none drawn or recorded
 
 <table>
 <tr>
@@ -65,7 +93,11 @@ Explore the manor floor by floor, piece together what happened from the notes le
 
 ### Play it
 
-Download `Hollowmere-v1.2.zip` from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest) and run the `Hollowmere.gba` inside it in any accurate GBA emulator ([mGBA](https://mgba.io) recommended) or on hardware with a flash cartridge (it saves to SRAM). Best played in the dark, with headphones.
+1. Download the zip from the [latest release](https://github.com/PowerBeef/hollowmere/releases/latest).
+2. Open the `Hollowmere.gba` inside it in a GBA emulator. [mGBA](https://mgba.io) is the one it is tested in.
+3. Turn the lights off and put headphones on.
+
+It is a real cartridge image with battery saves (SRAM), so a flash cartridge should run it on a console too. That has not been tried yet: if you do, [say how it went](https://github.com/PowerBeef/hollowmere/issues).
 
 | Button | Action |
 |---|---|
@@ -78,88 +110,29 @@ Download `Hollowmere-v1.2.zip` from the [latest release](https://github.com/Powe
 
 An alternative layout (B for the light, R to run, SELECT for the map) is in the options.
 
-A save from v1.0 still works: the game continues at the start of the chapter it had reached, with the notes found so far.
-
----
-
-## What's new in v1.2
-
-The Night Sister moves. Her four still poses are now animations (360 pre-rendered frames where there were 155):
-
-- She breathes while she stands, and turns her head, shoulders and lantern from side to side while she searches
-- At prayer she rocks; when she stirs she takes up her lantern and rises, and kneels again the same way
-- Her free hand goes out to a door she opens, in step with the door
-- The lunge that ends a chase plays eight pictures, not three
-
-<img src="docs/media/sister-v1.2.png" width="720" alt="Frames of the Night Sister searching, rising from prayer, opening a door and lunging">
-
-Her behaviour, the levels and the saves are unchanged.
-
-## What's new in v1.1
-
-v1.1 is the result of a full audit of v1.0 and the repair of everything it found: 59 findings, from a chapter that could not be finished after a death to a test suite that could not fail. The whole list is in the [changelog](CHANGELOG.md). (v1.1.1 adds one fix to a portrait's frame and a credit.) In short:
-
-**The game**
-- Chapter IV can be finished after dying in it, and a checkpoint now keeps the scripts that were running when it was taken
-- Running makes noise, as the controls screen always said
-- Furniture no longer vanishes or leaves stale pixels at some angles: 20,368 views checked, none with an undrawn pixel (v1.0: 583)
-- Saves survive a power cut mid-write (two alternating slots) and a corrupt save can no longer hang the game
-- A dozen smaller fixes: the wardrobe view leaking into menus, a sign cut off mid-sentence, flashes of wrong colours on four transitions, hitches when the flashlight is switched or a subtitle appears
-
-**The engine**
-- It stands apart from the game: one header is the whole interface, and a [second, tiny game](examples/minimal) builds on it
-- One table of limits, enforced: the asset tools refuse content the engine cannot handle, by name
-- A test suite that can fail, and does on v1.0: 36 of its 38 regression tests
-- The whole repository is now under the MIT licence, the game included
-
 ---
 
 ## The engine
 
-The Hollowmere Engine renders a first-person 3D world into the GBA's 240×160 8-bit bitmap mode, entirely in software, at 20 frames per second in all but its heaviest views. Everything that runs per pixel is ARM code in the 32 KB of fast internal RAM.
+Everything above is drawn by the Hollowmere Engine: a software renderer for the GBA's 240×160 bitmap mode, with the systems a first-person game needs around it. It is separate from the game, MIT licensed, and comes with the tools that make its content and the tests that keep it honest.
 
-**World rendering**
-- Thin-wall raycaster: walls sit on the edges of a grid, so rooms share walls the way real buildings do, with doorways, arches, windows and lintels you can see through, three deep
-- Full horizontal resolution (240 columns), with columns drawn in pairs by hand-written assembly fillers
-- Two-tile-tall rooms, textured floors and ceilings with per-room materials, four mip levels per texture
-- Wall textures stored in seven layouts (column order, pairs, four quad alignments) so one memory read fetches two or four texels
+**What you get**
 
-**Real 3D objects**
-- Furniture, door leaves and props are textured polygon meshes, not sprites: projected with reciprocal tables (no divisions), back-face culled, depth-sorted and clipped against the walls and lintels
-- Three fill paths: wall-like faces as perspective-correct trapezoids, general convex polygons through per-column edge buffers, and wide faces as exact rows
-- Per-face level of detail and far-model swaps, plus an occluder pre-pass so walls hidden behind large furniture are never drawn
-- Doors are physical leaves that swing open on their hinges
+- **Buildings, not mazes.** Walls sit on the edges of a grid, so rooms share thin walls the way real ones do, with doorways, arches and windows you can see through, three deep. Rooms are two tiles tall, with textured floors and ceilings.
+- **Real 3D objects.** Furniture, props and door leaves are textured polygon meshes, depth-sorted and clipped against the walls. Doors swing on their hinges.
+- **Light as a game mechanic.** A flashlight cone, a light level per cell, and scripted lights that flicker, pulse and go out.
+- **Sound in space.** A stereo software mixer with positional 3D sound and a music sequencer.
+- **Scripted events.** A small bytecode machine runs eight scripts at once: doors, lights, sounds, messages, the enemy, cutscenes.
+- **The rest of a game.** Collision, line of sight, locks and keys, triggers and pickups, a HUD, map data, and saves that survive a power cut.
+- **A steady frame.** 20 frames per second in all but the heaviest views, held by a governor that measures every frame and trades far detail for speed before one can be missed.
 
-**Light and atmosphere**
-- 32-level colormap lighting with a flashlight cone, a per-cell light grid and scripted dynamic lights (flickering bulbs, candles, a pulsing night-light)
-- Hardware effects driven every frame: affine head-bob, shake, roll and zoom; HDMA wave distortion; window-based vignettes and cinema bars; fades and blending
-- Billboard sprites for characters and items, the main character pre-rendered from a 3D rig at 8 viewing angles with 4 sizes each
-
-**Systems**
-- Stereo software mixer on both Direct Sound channels at 13 kHz with an ARM inner loop, positional 3D sound and a note sequencer
-- Level event scripting: a bytecode VM with 8 concurrent threads (doors, lights, sounds, messages, the enemy, cutscenes), compiled from Python; a checkpoint keeps the scripts in flight
-- Grid world with collision, line of sight, doors and locks, triggers and pickups
-- Sprite-based HUD, map data for an auto-mapping map screen, battery-backed saves in two alternating slots
-- A frame loop with a detail governor that watches each frame's cycle count and trades far detail for speed before a frame can be missed
-
-**Tricks worth stealing**
-- Renderer tables live in the parts of video memory the letterbox hides: the off-screen rows of both frame buffers hold the depth buffer, colormaps and projection scratch, read as fast as internal RAM
-- The ROM is spent on speed: about 10 MB of the 17.2 MB cartridge is pre-arranged texture data
-- A fixed 842,688-cycle budget per frame (3 vblanks), measured on every frame, interrupts included; work that would cost a frame several (light tables, text, path searches) is spread over ticks
-
-**Content pipeline** — the whole game is generated from Python: floor plans written in code, low-poly models built from boxes, prisms and lofts, procedural textures, synthesized sounds and music, and level scripts compiled to bytecode.
-
-The tour of the runtime is in [docs/ENGINE.md](docs/ENGINE.md).
-
----
-
-## Make your own game
+### Build your own game
 
 <img src="docs/media/minimal.png" width="360" align="right" alt="The example game: a door in a lit room">
 
-A game is a folder: its C code, its content as Python, and four lines of `game.mk`. The engine includes no header of a game; a game includes one of the engine's, [`engine/src/game_api.h`](engine/src/game_api.h), and defines nine hooks (how to draw a frame, what a script's "enemy" operation means, whether a save is valid...).
+A game is a folder: its C code, its content as Python, and four lines of `game.mk`. It includes one header of the engine, [`engine/src/game_api.h`](engine/src/game_api.h), and defines nine hooks (how to draw a frame, what a script's "enemy" operation means, whether a save is valid...).
 
-[`examples/minimal`](examples/minimal) is the smallest complete one: a lit room, a closet behind a door, a key. One 180-line C file, nine short content modules.
+[`examples/minimal`](examples/minimal) is the smallest complete one: a lit room, a closet behind a door, a key. One 180-line C file and nine short content modules.
 
 ```sh
 make GAME=examples/minimal assets all      # -> build/minimal/minimal.gba
@@ -177,30 +150,65 @@ int main(void) {
 }
 ```
 
-[docs/MAKING_A_GAME.md](docs/MAKING_A_GAME.md) has the rest: what each content module must export, floor plans, every script operation, models, and the limits. Hollowmere itself, in [`game/`](game), is the full-size example. Both are MIT: copy freely.
+Copy the example, change the room, and you have a game. [docs/MAKING_A_GAME.md](docs/MAKING_A_GAME.md) covers the rest: floor plans, models, every script operation, and the limits. Hollowmere itself, in [`game/`](game), is the full-size example, and it is MIT too: take whatever is useful.
 
----
+### Content is code
 
-## Tested, and plain about its limits
+There is no editor and no binary asset to lose. A level is a floor plan typed as text, a table is a few boxes, a wallpaper is a function, a door creak is a synthesizer patch, and an event is a short script:
+
+- **`make assets` builds all of it**, and a cache rebuilds only what changed.
+- **Mistakes are caught at build time.** A 41st door, a 129th vertex, a line of text too long for the screen: the tools refuse each in one line that names the level, event or model. The limits live in one file, [`engine/src/limits.h`](engine/src/limits.h), which the C code, the tools and the linker all read.
+- **Builds are reproducible.** The same sources give the same ROM, byte for byte; each release is rebuilt from a clean checkout and compared with its recorded hash before it is published.
+
+<img src="docs/media/sister-v1.2.png" width="720" alt="Frames of the Night Sister searching, rising from prayer, opening a door and lunging">
+
+*Characters can be pre-rendered. The Night Sister is a 3D rig posed in Python and drawn by a small ray marcher in the repository: 360 frames, from 8 angles, at 4 sizes.*
+
+### How it gets 3D out of a GBA
+
+The GBA has a 16.78 MHz ARM7, no 3D hardware, no divide instruction and 32 KB of fast memory. Everything that runs per pixel is hand-written ARM code living in those 32 KB.
+
+**Walls and floors**
+- A thin-wall raycaster at full horizontal resolution: 240 columns, drawn in pairs by assembly fillers
+- Wall textures stored in seven layouts (column order, pairs, four quad alignments), so one memory read fetches two or four texels, with four mip levels each
+- An occluder pre-pass, so walls hidden behind large furniture are never drawn
+
+**Meshes**
+- Projected with reciprocal tables instead of divisions, back-face culled, sorted, and clipped against walls and lintels
+- Three fill paths: wall-like faces as perspective-correct trapezoids, general convex polygons through per-column edge buffers, wide faces as exact rows
+- Level of detail per face, and simpler models far away
+
+**Light and effects**
+- 32 light levels through colormaps: a flashlight cone, a light grid per cell, and lights that scripts switch and flicker
+- The GBA's own hardware for the rest: affine head-bob, shake, roll and zoom, per-scanline wave distortion, window vignettes and cinema bars, fades
+
+**Tricks worth stealing**
+- Renderer tables live in the video memory the letterbox hides: the off-screen rows of both frame buffers hold the depth buffer, colormaps and projection scratch, read as fast as internal RAM
+- The cartridge is spent on speed: about 10 MB of the 17 MB ROM is texture data arranged in advance for the fillers
+- A fixed budget of 842,688 cycles per frame, measured on every frame, interrupts included. Work that would cost several frames (light tables, text, path searches) is spread over ticks
+
+The full tour of the runtime is in [docs/ENGINE.md](docs/ENGINE.md).
+
+### It comes with its tests
 
 A headless [mGBA](https://mgba.io) harness scripts input, reads and writes memory by symbol, takes screenshots and fails on any bad memory access. On it, `make check` runs:
 
 | | |
 |---|---|
 | Playthrough | the whole game from power-on to the ending, asserting progress at every stage, also with a death in every chapter |
-| Regression tests | 43: one per bug fixed (39, of which 37 fail on v1.0) and four for the Night Sister's animations |
+| Regression tests | 43, one for every bug fixed and behaviour added |
 | View sweep | every place the player can stand, 20,368 views at three detail levels: no pixel left undrawn |
-| Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside, a real v1.0 save): each must end in a running game |
-| Content limits | 47 kinds of bad content (a 41st door, a 129th vertex, a wall standing free...) each refused by the asset tools in one line |
+| Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside): each must end in a running game |
+| Content limits | 47 kinds of bad content, each refused by the asset tools in one line |
 | Stack, frame rate, boot | stack headroom from a canary painted at boot, frame rate at benchmark views, the release ROM through a minute of random input |
 
-What it does **not** promise:
+A new game gets the same harness and every check that applies to it. Details in [docs/TOOLS.md](docs/TOOLS.md).
 
-- **Not every view holds 20 fps.** Of 3,396 places and headings sampled, 62 fall below 19.5 fps and 17 of those stay at 15 fps at the lowest detail level: close views of the hall staircase and the chapel's pews, where furniture covers the screen several times over. Three quarters of all views run at full detail.
-- **Nothing has been run on a console.** Every timing is from the mGBA emulator (0.10.2), which may read video memory faster than real hardware does.
-- The engine's limits (40 doors and 160 props a level, 128 vertices a model, 8 scripts at once...) are in one file, [`engine/src/limits.h`](engine/src/limits.h), which the C code, the tools and the linker script all read.
+### What to know before you build on it
 
-Details in [docs/TOOLS.md](docs/TOOLS.md).
+- **Not every view holds 20 fps.** Of 3,396 places and headings sampled in Hollowmere, 62 fall below 19.5 fps and 17 of those stay at 15: close views of the hall staircase and the chapel's pews, where furniture covers the screen several times over. Three quarters of all views run at full detail.
+- **It has only been run in an emulator.** Every timing is from mGBA 0.10.2, which may read video memory faster than a console does.
+- **It has limits**: 40 doors and 160 props a level, 128 vertices a model, 8 scripts at once. They are all in [`limits.h`](engine/src/limits.h), and the tools tell you when you reach one.
 
 ---
 
@@ -215,8 +223,7 @@ make assets   # generate gen/ from game/content (about two minutes the first tim
 make          # build hollowmere.gba
 ```
 
-The build is reproducible: with the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build of v1.2 produces a ROM with SHA-256
-`120a7e71e8656f739733f0ab8a00c53024b02b5b2a0c242be669c3aecabec682`.
+With the versions pinned in `requirements.txt` and listed in [docs/TOOLS.md](docs/TOOLS.md), a clean build gives the released ROM byte for byte: `sha256sum -c game/release.sha256` checks it.
 
 To run the tests as well, install `libmgba-dev`:
 
