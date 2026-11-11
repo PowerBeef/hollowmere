@@ -33,6 +33,38 @@ def test_staircase_close_up(t):
         t.check(n < 200, f"view {i}: {n} pixels differ from the view with every face drawn (box {box})")
 
 
+def test_the_next_room_does_not_show_along_a_wall(t):
+    """Nothing outside a shut room shows in its floor or ceiling. The drawing
+    room is drawn twice, with every light cell outside it lit to the full and
+    not lit at all: a pixel that differs was sampled beyond a wall. (The row
+    of floor or ceiling left showing where a wall's edge fell inside a pair
+    of rows was: a pale line of the corridor's plaster along the top of a
+    wall, three rows of it at some distances.)"""
+    views = [(2.0, 8.5, 270), (3.4, 7.5, 180), (0.6, 9.4, 0), (2.7, 6.5, 90), (6.5, 9.52, 270)]
+    for level in (31, 0):
+        L = hm.boot() + hm.dismiss() + ["run 300"] + hm.dismiss() + hm.HUD_OFF + harness.FULL_DETAIL
+        for gy in range(64):
+            for gx in range(0, 64, 4):
+                if not (gx < 8 and 10 <= gy < 20):                  # the drawing room: tiles 0..3, 5..9
+                    L.append(f"poke32 {{g_lightStatic+{gy * 64 + gx}}} {(level | 1 << 5) * 0x01010101}")
+        L += ["poke8 {g_lightsDirty} 1", "run 20"]
+        for i, (x, y, a) in enumerate(views[:4]):
+            L += hm.teleport(x, y, a, settle=10) + [f"shot {{out}}/room{i}_{level}.ppm"]
+        t.run(L)
+    for i in range(4):
+        n, box = changed(t.image(f"room{i}_31.ppm"), t.image(f"room{i}_0.ppm"))
+        t.check(n < 60, f"drawing room, view {i}: {n} pixels of the floor and ceiling come from beyond the walls (box {box})")
+    # and the hall as the game lights it, where it was seen: no plaster above
+    # the wall around the archway (the hall's ceiling is dark beams)
+    x, y, a = views[4]
+    t.run(hm.boot() + hm.dismiss() + ["run 300"] + hm.dismiss() + hm.HUD_OFF + harness.FULL_DETAIL
+          + hm.teleport(x, y, a, settle=12) + ["shot {out}/hall.ppm"])
+    im = t.image('hall.ppm')
+    pale = sum(1 for yy in range(26, 36) for xx in range(240)
+               if (lambda r, g, b: r + g + b > 200 and b * 10 > r * 7)(*im.getpixel((xx, yy))))
+    t.check(pale < 40, f"the hall, facing the corridor wall: {pale} pale pixels along the top of the wall")
+
+
 def test_no_undrawn_pixels(t):
     """Views that had rectangles of stale pixels: every pixel is drawn."""
     for level, views in ((0, [(5.5, 1.5, 112.5), (4.23, 1.23, 326.25)]), (3, [(3.23, 1.77, 332.25), (9.5, 1.5, 270)])):

@@ -7,6 +7,7 @@
 
 extern s16 g_camX[VIEW_W];
 extern u16 g_rowDist2[NPAIR_F];
+#define ROW_DIST(j) ((FOCAL * 128 + ((j) + 1) / 2) / ((j) + 1))
 extern u8  g_coneOf[VIEW_W];
 extern u8  (*g_flashW)[256];
 extern u32 g_flatTbl[NCONE][NPAIR_C + 1];
@@ -31,8 +32,15 @@ static void render_column_tables(void) {
         }
         *(vu16 *)&g_coneOf[c] = cls2;
     }
-    // floor distance of row pair j: eye height (1 tile) * FOCAL / (2j+1), in 8.8
-    for (int j = 0; j < NPAIR_F; j++) g_rowDist2[j] = (FOCAL * 256 + j) / (2 * j + 1);
+    // floor distance of row pair j, in 8.8: eye height (1 tile) * FOCAL over
+    // the pair's distance from the eye line. Taken at the pair's near edge
+    // (2j+2), not its middle (2j+1): a wall whose top or foot falls inside a
+    // pair leaves one row of it showing, and sampled at the middle that row
+    // could lie beyond the wall, in the next room, with that room's ceiling,
+    // floor and light. At the near edge it never does: a wall that leaves
+    // part of pair j showing is less than 4j+3.5 rows high, so it stands
+    // farther than FOCAL / (2j+1.75).
+    for (int j = 0; j < NPAIR_F; j++) g_rowDist2[j] = ROW_DIST(j);
 }
 
 EWRAM_BSS u8 g_colormapSrc[8192] ALIGN4;
@@ -194,7 +202,7 @@ void render_build_flash_tables(void) {
 
 void render_init(void) {
     render_column_tables();
-    for (int j = 0; j < NPAIR_F; j++) s_rowDist[j] = (FOCAL * 256 + j) / (2 * j + 1);
+    for (int j = 0; j < NPAIR_F; j++) s_rowDist[j] = ROW_DIST(j);
     s_cur = -1;
     render_build_flash_tables();
 }

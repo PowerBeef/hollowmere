@@ -201,7 +201,7 @@ A headless [mGBA](https://mgba.io) harness scripts input, reads and writes memor
 | | |
 |---|---|
 | Playthrough | the whole game from power-on to the ending, asserting progress at every stage, also with a death in every chapter |
-| Regression tests | 46, one for every bug fixed and behaviour added |
+| Regression tests | 47, one for every bug fixed and behaviour added |
 | View sweep | every place the player can stand, 20,280 views at three detail levels: no pixel left undrawn |
 | Hostile saves | 43 save files (blank, random, cut off mid-write, valid checksum with nonsense inside): each must end in a running game |
 | Content limits | 48 kinds of bad content, each refused by the asset tools in one line |

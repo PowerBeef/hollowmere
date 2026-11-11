@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.1
+
+One fix to v1.3.
+
+- **Fixed: a pale line along the top of some walls.** Where a room with a dark ceiling meets one with a pale ceiling (the hall and the corridor behind its far wall, most of all), a line of the next room's ceiling showed above the wall between them, up to three rows thick, at some distances and not at others; a line of the next room's floor showed along the wall's foot the same way. Floors and ceilings are drawn in pairs of rows, each pair sampled at its middle, and the one row left showing where a wall's edge fell inside a pair could be sampled just beyond the wall. Each pair is now sampled at its near edge, which no wall that leaves part of it showing stands in front of. In 600 views of the drawing room with its doors shut, 54,174 pixels came from beyond the walls in v1.3 and 326 do now (a few at wall corners, 16 in the worst view). It costs no frame time: the change is in a table.
+- In every version since v1.0. Saves are untouched.
+
 ## v1.3
 
 Fire. The fireplaces were painted embers with a faint flicker; they are hearths now, and the first new thing to do in the house since v1.0.
